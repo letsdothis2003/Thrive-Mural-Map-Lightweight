@@ -296,6 +296,8 @@ To update the data source or API key, edit the values below.
     csvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQGG7nJALaHS51jJ7BEcfeu-MqPPoTXUo5hkJd1NE-tTn9W76gduRp5dPDoOEsQMFbd8LYm4Oq8-R9_/pub?output=csv',
 
     geocoding: {
+      // No backend available in standalone mode — uses ORS + Nominatim directly from browser.
+      backendEndpoint: null,
       primary: {
         endpoint: 'https://api.openrouteservice.org/geocode/search',
         apiKey: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzMTkzMjU2M2NiYjRkOTc4ODE5ZmU2Y2IzNTg0OTBkIiwiaCI6Im11cm11cjY4In0=',

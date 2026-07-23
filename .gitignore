@@ -1,59 +1,12 @@
-config.js
+# Sensitive files
+ secretconfig.js
 
-# ============================================================
-# GITIGNORE – THRIVE COLLECTIVE MURAL MAP
-# ============================================================
-# This file tells Git which files and folders to ignore.
-# It prevents sensitive information (API keys, config files)
-# from being accidentally committed to the repository.
-# ============================================================
+# OS generated files
+.DS_Store
+Thumbs.db
+*.log
 
-# ============================================================
-# SENSITIVE CONFIGURATION – DO NOT COMMIT
-# ============================================================
-config.js          # Contains API keys and CSV URL
-secretconfig.js    # Alternative secret config (if used)
-
-# ============================================================
-# OPERATING SYSTEM FILES
-# ============================================================
-.DS_Store          # macOS folder metadata
-Thumbs.db          # Windows thumbnail cache
-*.log              # Log files
-*.tmp              # Temporary files
-*.swp              # Vim swap files
-*.swo              # Vim swap files
-~$*                # Office temporary files
-
-# ============================================================
-# DEVELOPMENT TOOLS
-# ============================================================
-node_modules/      # Node.js dependencies (if using npm)
-package-lock.json  # NPM lock file (optional)
-yarn.lock          # Yarn lock file (optional)
-.env               # Environment variables
-.env.local         # Local environment variables
-
-# ============================================================
-# EDITOR AND IDE FILES
-# ============================================================
-.vscode/           # VS Code settings
-.idea/             # IntelliJ IDEA settings
-*.iml              # IntelliJ module file
-*.code-workspace   # VS Code workspace file
-
-# ============================================================
-# BUILD AND DEPLOYMENT
-# ============================================================
-dist/              # Build output directory
-build/             # Build output directory
-*.min.js           # Minified JavaScript (if generated)
-*.min.css          # Minified CSS (if generated)
-
-# ============================================================
-# MISC
-# ============================================================
-*.bak              # Backup files
-*.old              # Old files
-*.orig             # Original files
-.DS_Store          # macOS (duplicate for safety)
+# Dependencies & IDEs
+node_modules/
+.vscode/
+.idea/

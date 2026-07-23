@@ -125,12 +125,47 @@ function updateLoadingProgress(current, total, message) {
     loadingEl.textContent = message + ' ' + current + ' / ' + total + ' (' + pct + '%)';
 }
 
+// --- Borough / neighbourhood fallback coordinates ---
+
+var BOROUGH_CENTROIDS = {
+    'manhattan':     { lat: 40.7831, lng: -73.9712 },
+    'brooklyn':      { lat: 40.6782, lng: -73.9442 },
+    'queens':        { lat: 40.7282, lng: -73.7949 },
+    'bronx':         { lat: 40.8448, lng: -73.8648 },
+    'staten island': { lat: 40.5795, lng: -74.1502 }
+};
+
+// Jitter a coordinate slightly so stacked fallback pins don't overlap
+function jitter(coord, range) {
+    range = range || 0.008;
+    return coord + (Math.random() - 0.5) * range;
+}
+
+function getBoroughFallback(borough, neighborhood) {
+    var b = (borough || '').toLowerCase().trim();
+    var centroid = BOROUGH_CENTROIDS[b] || null;
+    if (!centroid) {
+        // Try partial match
+        for (var key in BOROUGH_CENTROIDS) {
+            if (b.indexOf(key) !== -1 || key.indexOf(b) !== -1) {
+                centroid = BOROUGH_CENTROIDS[key];
+                break;
+            }
+        }
+    }
+    if (!centroid) return null;
+    return { lat: jitter(centroid.lat), lng: jitter(centroid.lng) };
+}
+
 // --- Geocoding config extraction ---
 
 var geoConfig = CONFIG.geocoding;
 var primaryConfig = geoConfig.primary || { endpoint: null, apiKey: null, proxy: null };
 var fallbackConfig = geoConfig.fallback || { endpoint: null };
 var directParseEnabled = geoConfig.directParse && geoConfig.directParse.enabled !== false;
+
+// Backend geocode endpoint (server-side ORS + Nominatim, no CORS issues)
+var BACKEND_GEOCODE = (CONFIG.geocoding.backendEndpoint) || null;
 
 // --- Cache functions ---
 
@@ -210,7 +245,26 @@ async function geocodeAddress(address) {
 
     var cleanAddress = addressStr.replace(/\s*,\s*,/g, ',').replace(/,\s*$/, '').trim();
 
-    // --- ORS with proxy ---
+    // --- Backend geocode proxy (server-side ORS → Nominatim, no CORS issues) ---
+    if (BACKEND_GEOCODE) {
+        try {
+            var backendUrl = BACKEND_GEOCODE + '?address=' + encodeURIComponent(cleanAddress);
+            var backendRes = await fetch(backendUrl);
+            if (backendRes.ok) {
+                var backendData = await backendRes.json();
+                if (backendData && typeof backendData.lat === 'number') {
+                    setCachedCoords(addressStr, backendData.lat, backendData.lng);
+                    return { lat: backendData.lat, lng: backendData.lng };
+                }
+            }
+            console.warn('Backend geocoder returned no result for "' + cleanAddress + '" (status: ' + backendRes.status + ')');
+        } catch (e) {
+            console.warn('Backend geocoder error for "' + cleanAddress + '":', e.message);
+        }
+        return null;
+    }
+
+    // --- ORS with proxy (fallback for standalone / zip export) ---
     var primaryEndpoint = primaryConfig.endpoint;
     var primaryApiKey = primaryConfig.apiKey;
     var proxy = primaryConfig.proxy || '';
@@ -281,6 +335,22 @@ function createGreenIcon() {
     });
 }
 
+function createApproxIcon() {
+    var cfg = CONFIG.marker;
+    // Grey dashed-border pin for approximate / borough-fallback locations
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="' + cfg.size + '" height="' + (cfg.size + 10) + '">' +
+        '<circle cx="16" cy="16" r="12" fill="#9ca3af" stroke="#6b7280" stroke-width="2" stroke-dasharray="4 2"/>' +
+        '<text x="16" y="21" text-anchor="middle" font-size="13" font-family="sans-serif" fill="white" font-weight="bold">?</text>' +
+        '<path d="M16 28 Q16 35 16 38 Q16 35 16 28" fill="#9ca3af"/>' +
+        '</svg>';
+    return L.icon({
+        iconUrl: 'data:image/svg+xml;base64,' + btoa(svg),
+        iconSize: [cfg.size, cfg.size + 10],
+        iconAnchor: cfg.anchor,
+        popupAnchor: cfg.popupAnchor
+    });
+}
+
 // --- Build popup content (FULL DESCRIPTION, no truncation) ---
 
 function buildPopupContent(mural) {
@@ -299,6 +369,11 @@ function buildPopupContent(mural) {
 
     if (mural.address) {
         content += '<p style="margin: 2px 0; font-size: 11px; color: var(--text-muted, #888);">' + escapeHtml(mural.address) + '</p>';
+    }
+
+    if (mural.approximate) {
+        content += '<p style="margin: 4px 0; font-size: 11px; color: #b45309; background: #fef3c7; border-radius: 4px; padding: 3px 6px;">' +
+            '📍 Approximate location — address could not be pinpointed</p>';
     }
 
     if (mural.imageUrl && String(mural.imageUrl).length > 10) {
@@ -466,10 +541,22 @@ async function loadMurals() {
             if (coords) {
                 item.mural.lat = coords.lat;
                 item.mural.lng = coords.lng;
+                item.mural.approximate = false;
                 allMurals.push(item.mural);
                 geocodedCount++;
             } else {
-                failedCount++;
+                // Borough/neighbourhood fallback — place the mural on the map at an
+                // approximate location rather than dropping it entirely.
+                var approxCoords = getBoroughFallback(item.mural.borough, item.mural.neighborhood);
+                if (approxCoords) {
+                    item.mural.lat = approxCoords.lat;
+                    item.mural.lng = approxCoords.lng;
+                    item.mural.approximate = true;   // flag for visual distinction
+                    allMurals.push(item.mural);
+                    console.warn('Approximate location used for "' + item.mural.title + '" (' + item.mural.address + ')');
+                } else {
+                    failedCount++;
+                }
             }
             await new Promise(function(resolve) { setTimeout(resolve, delay); });
 
@@ -638,12 +725,14 @@ function refreshMarkers() {
     }
 
     var greenIcon = createGreenIcon();
+    var approxIcon = createApproxIcon();
 
     for (var i = 0; i < filtered.length; i++) {
         var mural = filtered[i];
         if (mural.lat && mural.lng) {
             var popupContent = buildPopupContent(mural);
-            var marker = L.marker([mural.lat, mural.lng], { icon: greenIcon })
+            var icon = mural.approximate ? approxIcon : greenIcon;
+            var marker = L.marker([mural.lat, mural.lng], { icon: icon })
                 .bindPopup(popupContent, { maxWidth: CONFIG.popup.maxWidth });
             markerClusterGroup.addLayer(marker);
         }

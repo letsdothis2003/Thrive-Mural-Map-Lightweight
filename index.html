@@ -1,0 +1,308 @@
+<!--
+  ============================================================
+  THRIVE COLLECTIVE – MURAL MAP
+  ============================================================
+  This is the main entry point for the interactive mural map.
+  It displays a Leaflet-based map with a full-featured side
+  panel that includes:
+    - Address / GPS location search
+    - Custom tour builder with radius and stop count
+    - Filters (year, school, borough, text search)
+    - Mural view density slider
+    - Recently viewed, saved, and featured murals
+    - Dark / light mode toggle
+    - Tour itinerary with route display
+
+  All configuration (CSV URL, API keys) is kept in config.js
+  which is excluded from version control. The main logic is in
+  map.js. Both files must be in the same directory as this HTML
+  file.
+
+  For GitHub Pages deployment, ensure all files are in the root
+  of the repository.
+  ============================================================
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- ===== BASIC METADATA ===== -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="Interactive map of Thrive Collective murals across New York City. Explore public art, create tours, and save favorites." />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Thrive Collective – Mural Map</title>
+
+  <!-- ===== FAVICON (inline SVG) ===== -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+
+  <!-- ===== LEAFLET AND PLUGIN STYLES ===== -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+
+  <!-- ===== CUSTOM STYLES ===== -->
+  <link rel="stylesheet" href="style.css" />
+
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============================================================
+  SIDEBAR – all controls and panels
+  ============================================================ -->
+  <aside id="sidebar" role="complementary" aria-label="Controls and filters">
+
+    <!-- Hide Sidebar Button -->
+    <button id="sidebarHideBtn" class="sidebar-hide-btn" aria-label="Hide sidebar" title="Hide sidebar">
+      <span aria-hidden="true">&#8249;</span>
+    </button>
+
+    <!-- Header with logo and theme toggle -->
+    <header class="sidebar-header">
+      <img src="ThriveCollective_BlackLogoHorizontal.png" alt="Thrive Collective logo" class="logo" />
+      <button id="themeToggle" class="theme-toggle" aria-label="Toggle light/dark mode" title="Switch theme">
+        <span class="sun-icon" aria-hidden="true">☀️</span>
+        <span class="moon-icon" aria-hidden="true">🌙</span>
+        <span id="themeToggleText">Light Mode</span>
+      </button>
+    </header>
+
+    <!-- ============================================================
+    LOCATION SEARCH PANEL
+    ============================================================ -->
+    <section class="utility-panel" aria-label="Location search">
+      <div class="utility-headline">
+        <p>Find a mural near you.</p>
+      </div>
+
+      <input id="manual-address-input" type="text" placeholder="Enter your address or zip code..." class="address-input" autocomplete="off" aria-label="Enter address" />
+
+      <div class="location-actions">
+        <button id="start-search-btn" class="primary-btn">Start</button>
+        <button id="use-device-gps-btn" class="ghost-btn">Use Device GPS</button>
+        <button id="clearLocationBtn" class="ghost-btn">Clear</button>
+      </div>
+
+      <div id="nearestResults" class="nearest-results empty" aria-live="polite"></div>
+    </section>
+
+    <!-- ============================================================
+    CUSTOM TOUR BUILDER
+    ============================================================ -->
+    <section class="custom-tour-trigger-panel" aria-label="Custom tour builder">
+
+      <div style="margin-bottom: 10px;">
+        <label for="customTourSetting" style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); display: block; font-weight: 600; letter-spacing: 0.5px;">
+          Tour Setting
+          <span class="info-tip" data-tip="Exterior: Public murals. Interior: Inside buildings. Any: Mixed tour." aria-label="Help">(?)</span>
+        </label>
+        <select id="customTourSetting" class="filter-select">
+          <option value="exterior" selected>Exterior Only</option>
+          <option value="any">Both Exterior + Interior</option>
+          <option value="interior">Interior Only</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 10px;">
+        <label for="customTourRadius" style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); display: block; font-weight: 600; letter-spacing: 0.5px;">
+          Tour Radius
+          <span id="customTourRadiusLabel" style="font-weight:700; color: var(--text-main);">1 mile</span>
+        </label>
+        <input id="customTourRadius" type="range" min="0.5" max="5" step="0.5" value="1" aria-label="Tour radius in miles" />
+      </div>
+
+      <div style="margin-bottom: 10px;">
+        <label for="customTourLimit" style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); display: block; font-weight: 600; letter-spacing: 0.5px;">
+          Mural Count
+          <span id="customTourLimitLabel" style="font-weight:700; color: var(--text-main);">6 stops</span>
+        </label>
+        <input id="customTourLimit" type="range" min="2" max="20" step="1" value="6" aria-label="Number of tour stops" />
+      </div>
+
+      <div id="customTourSummary" style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; min-height: 18px;">
+        Set your location first to preview local tour stops.
+      </div>
+
+      <button id="createCustomTourBtn" class="custom-tour-header-btn">
+        <span>Create Local Tour</span>
+      </button>
+    </section>
+
+    <!-- ============================================================
+    FILTERS AND SEARCH
+    ============================================================ -->
+    <section class="filters" aria-label="Filters and search">
+
+      <div class="filter-group">
+        <label>Mural View <span class="info-tip" data-tip="Reduces map clutter by displaying a random sampling of murals." aria-label="Help">(?)</span> &#8212; <span id="muralViewLabel">100%</span></label>
+        <input type="range" id="muralViewSlider" min="10" max="100" step="5" value="100" class="mural-view-slider" aria-label="Percentage of murals to display" />
+      </div>
+
+      <div class="filter-group">
+        <button id="clearAllFiltersBtn" class="ghost-btn" style="width: 100%; margin-top: 5px;">Clear All Filters</button>
+      </div>
+
+      <div class="filter-group" style="margin-top: 15px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
+        <label style="display: flex; align-items: center; cursor: pointer; color: var(--text-main);">
+          <input type="checkbox" id="toggleDistricts" checked style="margin-right: 10px; width: 18px; height: 18px;" />
+          Show Council Districts
+        </label>
+      </div>
+
+      <div class="filter-group" style="margin-top: 10px;">
+        <label style="display: flex; align-items: center; cursor: pointer; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.02em;">
+          <input type="checkbox" id="enableNarrator" style="margin-right: 10px; width: 18px; height: 18px;" />
+          Enable Narrator
+        </label>
+      </div>
+
+      <div class="filter-group" style="margin-top: 20px;">
+        <label for="searchInput">Search</label>
+        <input type="text" id="searchInput" placeholder="Search Murals..." aria-label="Search murals by title, artist, or description" />
+      </div>
+
+      <!-- Advanced Search Filters Toggle -->
+      <div style="border-top: 1px solid var(--panel-border); margin-top: 10px; padding-top: 5px;">
+        <button id="toggleSearchFiltersBtn" class="view-all-btn" style="width: 100%; text-align: left; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: var(--heading-color); text-transform: uppercase; font-size: 13px; letter-spacing: 0.5px;">
+          <span>Advanced Search Filters</span>
+          <span id="toggleSearchFiltersIcon">+</span>
+        </button>
+
+        <div id="searchFiltersContainer" style="display: none; flex-direction: column; gap: 20px;">
+          <div class="filter-group">
+            <label for="yearFilter">Year</label>
+            <select id="yearFilter" class="filter-select">
+              <option value="">All Years</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="schoolsFilter">Schools / Sites</label>
+            <select id="schoolsFilter" class="filter-select">
+              <option value="">All Schools / Sites</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="boroughFilter">Locations</label>
+            <select id="boroughFilter" class="filter-select">
+              <option value="">All Boroughs</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+    RECENTLY VIEWED MURALS
+    ============================================================ -->
+    <section class="recents-panel" aria-label="Recently viewed murals">
+      <div class="filter-header"><label>Recently Viewed</label></div>
+      <div id="recentMuralsList" class="recent-list" role="list"></div>
+    </section>
+
+    <!-- ============================================================
+    SAVED MURALS
+    ============================================================ -->
+    <section class="saved-panel" aria-label="Saved murals">
+      <div class="filter-header"><label>Saved Murals</label></div>
+      <div id="savedMuralsList" class="recent-list" role="list"></div>
+    </section>
+
+    <!-- ============================================================
+    FEATURED MURALS (Surprise Me / Refresh)
+    ============================================================ -->
+    <section class="featured-panel" aria-label="Featured murals">
+      <div class="filter-header">
+        <label>Featured Murals</label>
+        <button id="refreshFeaturedMuralsBtn" class="view-all-btn" style="text-decoration: none; font-weight: 600;">Refresh</button>
+      </div>
+      <div id="featuredMuralsList" role="list"></div>
+    </section>
+
+    <!-- Sidebar footer with attribution -->
+    <footer style="border-top: 1px solid var(--panel-border); padding-top: 12px; margin-top: 8px; font-size: 10px; color: var(--text-muted); text-align: center;">
+      Data &copy; Thrive Collective &bull; Map &copy; OpenStreetMap contributors
+    </footer>
+  </aside>
+
+  <!-- ============================================================
+  VIEW ALL MODAL
+  ============================================================ -->
+  <div id="viewAllModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">View All</h2>
+        <button class="modal-close" id="modalClose" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+  MAP CONTAINER
+  ============================================================ -->
+  <main id="map-container" role="main" aria-label="Interactive map">
+    <div id="map">
+      <div id="map-loading" aria-live="polite">Loading murals...</div>
+      <div id="map-error" class="hidden" role="alert"></div>
+    </div>
+  </main>
+
+  <!-- ============================================================
+  TOUR ITINERARY PANEL (floating, appears when a tour is active)
+  ============================================================ -->
+  <div id="tourItinerary" role="dialog" aria-label="Tour itinerary" aria-modal="true">
+    <div class="tour-header">
+      <h3 id="tourTitle">Mural Tour</h3>
+      <button id="endTourBtn" aria-label="End tour">End Tour</button>
+    </div>
+    <div class="tour-stops" id="tourStopsList" role="list"></div>
+    <div class="tour-nav">
+      <button id="tourPrevBtn" class="secondary" aria-label="Previous stop">Previous</button>
+      <button id="tourNextBtn" aria-label="Next stop">Next</button>
+      <button id="tourRouteBtn" class="secondary" aria-label="Show route on map">Show Route</button>
+    </div>
+  </div>
+
+  <!-- ============================================================
+  SIDEBAR SHOW TAB (visible when sidebar is hidden)
+  ============================================================ -->
+  <button id="sidebarShowTab" class="sidebar-show-tab hidden" aria-label="Show sidebar" aria-expanded="false" title="Show sidebar">
+    <span aria-hidden="true">&#8250;</span>
+  </button>
+
+  <!-- ============================================================
+  TOAST NOTIFICATION (temporary messages)
+  ============================================================ -->
+  <div id="toast" class="toast hidden" role="alert" aria-live="polite"></div>
+
+</div> <!-- end #app -->
+
+<!-- ============================================================
+JAVASCRIPT – Load in the correct order
+============================================================ -->
+
+<!-- 1. Configuration (contains API keys and CSV URL) -->
+<script src="config.js"></script>
+
+<!-- 2. Papa Parse CSV parser -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<!-- 3. Leaflet core library -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- 4. Leaflet MarkerCluster plugin -->
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<!-- 5. Leaflet Routing Machine plugin (for tour routes) -->
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+<!-- 6. Main application logic -->
+<script src="map.js"></script>
+
+</body>
+</html>

@@ -1,6 +1,7 @@
 // ============================================================
 // THRIVE COLLECTIVE - MURAL MAP
-// Optimized with ORS + Nominatim fallback, caching, and full UI
+// Three-tier geocoding: ORS + proxy -> Nominatim -> Direct parse
+// Two-pass loading: instant cache + background geocoding
 // ============================================================
 
 // --- Global state ---
@@ -70,11 +71,16 @@ const toast = document.getElementById('toast');
 // --- Helper functions ---
 
 function getValue(row, key) {
-    const mappedKey = CONFIG.columns[key];
+    var mappedKey = CONFIG.columns[key];
     if (!mappedKey) return null;
-    const actualKey = Object.keys(row).find(
-        function(col) { return col.toLowerCase().trim() === mappedKey.toLowerCase().trim(); }
-    );
+    var actualKey = null;
+    var keys = Object.keys(row);
+    for (var i = 0; i < keys.length; i++) {
+        if (keys[i].toLowerCase().trim() === mappedKey.toLowerCase().trim()) {
+            actualKey = keys[i];
+            break;
+        }
+    }
     return actualKey ? row[actualKey] : null;
 }
 
@@ -117,16 +123,17 @@ function updateLoadingProgress(current, total, message) {
     loadingEl.textContent = message + ' ' + current + ' / ' + total + ' (' + pct + '%)';
 }
 
-// --- Geocoding with caching and fallback ---
+// --- Geocoding config extraction ---
 
-const CACHE_VERSION = 'v2';
-const CACHE_KEY = 'mural_geocode_cache';
-
-// --- Determine geocoding config ---
-// If CONFIG.geocoding.primary exists, use it; otherwise treat CONFIG.geocoding as the primary.
 var geoConfig = CONFIG.geocoding;
-var primaryConfig = geoConfig.primary || geoConfig;
-var fallbackConfig = geoConfig.fallback || null;
+var primaryConfig = geoConfig.primary || { endpoint: null, apiKey: null, proxy: null };
+var fallbackConfig = geoConfig.fallback || { endpoint: null };
+var directParseEnabled = geoConfig.directParse && geoConfig.directParse.enabled !== false;
+
+// --- Cache functions ---
+
+var CACHE_VERSION = 'v3';
+var CACHE_KEY = 'mural_geocode_cache';
 
 function loadGeocodeCache() {
     try {
@@ -165,25 +172,57 @@ function setCachedCoords(address, lat, lng) {
     saveGeocodeCache(cache);
 }
 
+// --- Option 3: Direct coordinate parsing (no API call) ---
+
+function parseLatLng(text) {
+    if (!text) return null;
+    var str = String(text).trim();
+    // Match "lat, lng" or "lat lng" with optional comma and spaces
+    var m = str.match(/^(-?\d{1,3}(?:\.\d+)?)[,\s]+(-?\d{1,3}(?:\.\d+)?)$/);
+    if (m) {
+        var lat = parseFloat(m[1]);
+        var lng = parseFloat(m[2]);
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && (lat !== 0 || lng !== 0)) {
+            return { lat: lat, lng: lng };
+        }
+    }
+    return null;
+}
+
+// --- Option 1 + 2: Geocode with three-tier fallback ---
+
 async function geocodeAddress(address) {
     if (!address) return null;
     var addressStr = String(address).trim();
     if (addressStr.length < 5) return null;
 
-    // Check cache first
+    // Check cache first (fastest)
     var cached = getCachedCoords(addressStr);
     if (cached) {
         return cached;
     }
 
+    // OPTION 3: Try direct coordinate parsing first (no API call)
+    if (directParseEnabled) {
+        var directCoords = parseLatLng(addressStr);
+        if (directCoords) {
+            setCachedCoords(addressStr, directCoords.lat, directCoords.lng);
+            return directCoords;
+        }
+    }
+
     var cleanAddress = addressStr.replace(/\s*,\s*,/g, ',').replace(/,\s*$/, '').trim();
 
-    // --- Primary geocoder (ORS) ---
-    try {
-        var primaryEndpoint = primaryConfig.endpoint;
-        var primaryApiKey = primaryConfig.apiKey;
-        if (primaryEndpoint && primaryApiKey) {
-            var url = primaryEndpoint + '?api_key=' + primaryApiKey + '&text=' + encodeURIComponent(cleanAddress) + '&size=1';
+    // ------------------------------------------------------------------
+    // OPTION 1: OpenRouteService (ORS) with optional CORS proxy
+    // ------------------------------------------------------------------
+    var primaryEndpoint = primaryConfig.endpoint;
+    var primaryApiKey = primaryConfig.apiKey;
+    var proxy = primaryConfig.proxy || '';
+
+    if (primaryEndpoint && primaryApiKey) {
+        try {
+            var url = proxy + primaryEndpoint + '?api_key=' + primaryApiKey + '&text=' + encodeURIComponent(cleanAddress) + '&size=1';
             var response = await fetch(url);
             if (response.ok) {
                 var data = await response.json();
@@ -194,15 +233,17 @@ async function geocodeAddress(address) {
                     return result;
                 }
             }
-            console.warn('Primary geocoder failed for "' + cleanAddress + '"');
-        } else {
-            console.warn('Primary geocoder config missing endpoint or apiKey');
+            console.warn('ORS geocoder failed for "' + cleanAddress + '" (status: ' + response.status + ')');
+        } catch (e) {
+            console.warn('ORS geocoder error for "' + cleanAddress + '":', e.message);
         }
-    } catch (e) {
-        console.warn('Primary geocoder error for "' + cleanAddress + '":', e.message);
+    } else {
+        console.warn('ORS geocoder not configured (missing endpoint or apiKey)');
     }
 
-    // --- Fallback: Nominatim (if configured) ---
+    // ------------------------------------------------------------------
+    // OPTION 2: Nominatim (OpenStreetMap) – free, no API key, no CORS
+    // ------------------------------------------------------------------
     if (fallbackConfig && fallbackConfig.endpoint) {
         try {
             var fallbackUrl = fallbackConfig.endpoint + '?q=' + encodeURIComponent(cleanAddress) + '&format=json&limit=1';
@@ -220,28 +261,14 @@ async function geocodeAddress(address) {
                     return fallbackResult;
                 }
             }
+            console.warn('Nominatim geocoder failed for "' + cleanAddress + '" (status: ' + fallbackResponse.status + ')');
         } catch (e) {
-            console.warn('Fallback geocoder error for "' + cleanAddress + '":', e.message);
+            console.warn('Nominatim geocoder error for "' + cleanAddress + '":', e.message);
         }
+    } else {
+        console.warn('Nominatim fallback not configured (missing endpoint)');
     }
 
-    return null;
-}
-
-// --- Direct lat/lng detection (skips geocoding API for coordinate strings) ---
-
-function parseLatLng(text) {
-    if (!text) return null;
-    var str = String(text).trim();
-    // Match "lat, lng" or "lat lng" patterns (both decimal)
-    var m = str.match(/^(-?\d{1,3}(?:\.\d+)?)[,\s]+(-?\d{1,3}(?:\.\d+)?)$/);
-    if (m) {
-        var lat = parseFloat(m[1]);
-        var lng = parseFloat(m[2]);
-        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && (lat !== 0 || lng !== 0)) {
-            return { lat: lat, lng: lng };
-        }
-    }
     return null;
 }
 
@@ -298,7 +325,13 @@ function buildPopupContent(mural) {
         content += '<p style="margin: 6px 0 0 0;"><a href="' + escapeHtml(mural.detailUrl) + '" target="_blank" style="color: #4CAF50; font-weight: bold; font-size: 13px; text-decoration: none; border: 1px solid #4CAF50; padding: 4px 12px; border-radius: 4px; display: inline-block;">Learn More</a></p>';
     }
 
-    var isSaved = savedMurals.some(function(m) { return m.title === mural.title && m.address === mural.address; });
+    var isSaved = false;
+    for (var i = 0; i < savedMurals.length; i++) {
+        if (savedMurals[i].title === mural.title && savedMurals[i].address === mural.address) {
+            isSaved = true;
+            break;
+        }
+    }
     content += '<p style="margin: 8px 0 0 0;">' +
         '<button onclick="toggleSaveMural(\'' + escapeHtml(mural.title) + '\', \'' + escapeHtml(mural.address) + '\')" ' +
         'style="background: ' + (isSaved ? '#ef4444' : '#4CAF50') + '; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">' +
@@ -340,8 +373,6 @@ window.toggleSaveMural = function(title, address) {
 };
 
 // --- Load CSV with two-pass strategy ---
-// Pass 1 (synchronous): load all murals that have direct lat/lng coords or cached geocodes — instant.
-// Pass 2 (async, background): geocode remaining real street addresses with API, adding them as they resolve.
 
 async function loadMurals() {
     loadingEl.classList.remove('hidden');
@@ -373,16 +404,16 @@ async function loadMurals() {
         console.log('Found ' + validRows.length + ' valid mural entries');
 
         var geocodeCache = loadGeocodeCache();
-        console.log('Cache has ' + Object.keys(geocodeCache).length + ' geocoded addresses');
+        var cacheCount = Object.keys(geocodeCache).length;
+        console.log('Cache has ' + cacheCount + ' geocoded addresses');
 
         // Show map immediately
         initMap();
 
-        // Reset murals
         allMurals = [];
         var needsGeocoding = [];
 
-        // ── PASS 1: instant load from direct coords or cache (synchronous) ──
+        // ── PASS 1: instant load from direct coords or cache ──
         for (var k = 0; k < validRows.length; k++) {
             var row = validRows[k];
             var title = getValue(row, 'name') || 'Untitled Mural';
@@ -405,16 +436,18 @@ async function loadMurals() {
             };
 
             if (locationText.length > 3) {
-                // Sub-path A: already lat/lng coordinates
+                // Try direct parse first (no cache needed)
                 var directCoords = parseLatLng(locationText);
                 if (directCoords) {
                     mural.lat = directCoords.lat;
                     mural.lng = directCoords.lng;
+                    // Cache the direct parse result
+                    setCachedCoords(locationText, directCoords.lat, directCoords.lng);
                     allMurals.push(mural);
                     continue;
                 }
 
-                // Sub-path B: real address — check cache first
+                // Check cache
                 var cacheKey = CACHE_VERSION + '_' + locationText.toLowerCase().replace(/\s+/g, '_');
                 var cachedCoords = geocodeCache[cacheKey] || null;
                 if (cachedCoords) {
@@ -431,7 +464,6 @@ async function loadMurals() {
 
         console.log('Pass 1 complete: ' + allMurals.length + ' murals loaded instantly, ' + needsGeocoding.length + ' need geocoding');
 
-        // Paint everything we have right away
         populateFilters();
         refreshMarkers();
         updateRecentList();
@@ -452,13 +484,13 @@ async function loadMurals() {
             return;
         }
 
-        // Show initial count and indicate geocoding is running
         loadingEl.textContent = allMurals.length + ' murals loaded — geocoding ' + needsGeocoding.length + ' more…';
         showToast('Showing ' + allMurals.length + ' murals. ' + needsGeocoding.length + ' more loading…');
 
-        // ── PASS 2: geocode remaining addresses in the background ──
+        // ── PASS 2: geocode remaining with three-tier fallback ──
         var delay = (primaryConfig && primaryConfig.delayBetweenRequests) || 300;
         var geocodedCount = 0;
+        var failedCount = 0;
 
         for (var i = 0; i < needsGeocoding.length; i++) {
             var item = needsGeocoding[i];
@@ -468,18 +500,20 @@ async function loadMurals() {
                 item.mural.lng = coords.lng;
                 allMurals.push(item.mural);
                 geocodedCount++;
+            } else {
+                failedCount++;
+                // Still keep the mural but without coordinates (it won't show on map)
+                // We could optionally add it with a flag, but we'll skip it for now
             }
-            // Yield to browser between API calls
             await new Promise(function(resolve) { setTimeout(resolve, delay); });
 
-            // Progressive repaint every 10 newly geocoded murals
-            if (geocodedCount > 0 && geocodedCount % 10 === 0) {
+            if ((geocodedCount + failedCount) > 0 && (geocodedCount + failedCount) % 10 === 0) {
                 refreshMarkers();
                 updateLoadingProgress(i + 1, needsGeocoding.length, 'Geocoding');
             }
         }
 
-        console.log('Pass 2 complete: geocoded ' + geocodedCount + ' of ' + needsGeocoding.length + ' addresses');
+        console.log('Pass 2 complete: geocoded ' + geocodedCount + ' of ' + needsGeocoding.length + ' addresses (' + failedCount + ' failed)');
         console.log('Total murals loaded: ' + allMurals.length);
 
         populateFilters();
@@ -549,7 +583,6 @@ function initMap() {
         attribution: CONFIG.map.tileAttribution
     }).addTo(map);
 
-    // Create cluster group
     markerClusterGroup = L.markerClusterGroup({
         iconCreateFunction: function(cluster) {
             var count = cluster.getChildCount();
@@ -626,7 +659,6 @@ function refreshMarkers() {
             var descMatch = (mural.description || '').toLowerCase().includes(searchTerm);
             if (!titleMatch && !artistMatch && !descMatch) return false;
         }
-        // Compare as strings to handle dynamicTyping year vs. string select value
         if (year && String(mural.year) !== String(year)) return false;
         if (school && mural.neighborhood !== school) return false;
         if (borough && mural.borough !== borough) return false;
@@ -720,7 +752,13 @@ window.zoomToMural = function(title, lat, lng) {
 };
 
 function addToRecent(mural) {
-    recentMurals = recentMurals.filter(function(m) { return m.title !== mural.title || m.address !== mural.address; });
+    var filtered = [];
+    for (var i = 0; i < recentMurals.length; i++) {
+        if (recentMurals[i].title !== mural.title || recentMurals[i].address !== mural.address) {
+            filtered.push(recentMurals[i]);
+        }
+    }
+    recentMurals = filtered;
     recentMurals.unshift(mural);
     if (recentMurals.length > 20) recentMurals.pop();
     localStorage.setItem('recentMurals', JSON.stringify(recentMurals));
@@ -733,7 +771,8 @@ function updateRecentList() {
         return;
     }
     var html = '';
-    for (var i = 0; i < Math.min(10, recentMurals.length); i++) {
+    var count = Math.min(10, recentMurals.length);
+    for (var i = 0; i < count; i++) {
         var m = recentMurals[i];
         html += '<div class="recent-card" onclick="zoomToMural(\'' + escapeHtml(m.title) + '\', ' + m.lat + ', ' + m.lng + ')">' +
             '<h4>' + escapeHtml(m.title) + '</h4>' +
@@ -748,7 +787,8 @@ function updateSavedList() {
         return;
     }
     var html = '';
-    for (var i = 0; i < Math.min(10, savedMurals.length); i++) {
+    var count = Math.min(10, savedMurals.length);
+    for (var i = 0; i < count; i++) {
         var m = savedMurals[i];
         html += '<div class="recent-card" onclick="zoomToMural(\'' + escapeHtml(m.title) + '\', ' + m.lat + ', ' + m.lng + ')">' +
             '<h4>' + escapeHtml(m.title) + '</h4>' +
@@ -771,7 +811,6 @@ function updateFeatured() {
 }
 
 // --- Theme ---
-// Note: no emoji used – theme label is text-only
 
 function applyTheme() {
     var toggleTextEl = document.getElementById('themeToggleText');
@@ -797,25 +836,6 @@ function toggleTheme() {
 function setupEventListeners() {
     themeToggle.addEventListener('click', toggleTheme);
 
-    // --- Mobile bottom-sheet toggle ---
-    var mobileHandle = document.getElementById('mobileSheetHandle');
-    if (mobileHandle) {
-        function isMobile() { return window.innerWidth <= 768; }
-        function toggleMobileSheet() {
-            if (!isMobile()) return;
-            sidebar.classList.toggle('mobile-expanded');
-        }
-        mobileHandle.addEventListener('click', toggleMobileSheet);
-        mobileHandle.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMobileSheet(); }
-        });
-        // Close sheet when user taps map on mobile
-        document.getElementById('map').addEventListener('click', function() {
-            if (isMobile()) sidebar.classList.remove('mobile-expanded');
-        });
-    }
-
-    // --- Desktop hide/show sidebar ---
     sidebarHideBtn.addEventListener('click', function() {
         sidebar.classList.add('hidden');
         sidebarShowTab.classList.remove('hidden');

@@ -1,16 +1,18 @@
-// Generated at build time by GitHub Actions — DO NOT commit production values.
+// Generated at build time by GitHub Actions — DO NOT commit production secrets to Git.
 const CONFIG = {
-  csvUrl: '',
+  // Injected via GitHub Secret: CSV_URL
+  csvUrl: '${{ secrets.CSV_URL }}',
 
   geocoding: {
     primary: {
       endpoint: 'https://nominatim.openstreetmap.org/search',
-      apiKey: '',
+      apiKey: '', // Nominatim is free; no API key required
       delayBetweenRequests: 200
     },
     fallback: {
       endpoint: 'https://api.openrouteservice.org/geocode/search',
-      apiKey: '',
+      // Injected via GitHub Secret: ORS_API_KEY
+      apiKey: '${{ secrets.ORS_API_KEY }}',
       proxy: 'https://corsproxy.io/?',
       delayBetweenRequests: 200
     },
@@ -18,7 +20,7 @@ const CONFIG = {
   },
 
   map: {
-    initialView: [40.7128, -74.0060], // NYC
+    initialView: [40.7128, -74.0060], // NYC center
     initialZoom: 11,
     maxZoom: 19,
     tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -46,7 +48,7 @@ const CONFIG = {
   popup: {
     maxWidth: 320,
     maxHeight: 500,
-    descriptionTruncate: 0 // 0 = no truncation
+    descriptionTruncate: 0
   },
 
   marker: {

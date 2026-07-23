@@ -1,0 +1,12 @@
+# Sensitive files
+ secretconfig.js
+
+# OS generated files
+.DS_Store
+Thumbs.db
+*.log
+
+# Dependencies & IDEs
+node_modules/
+.vscode/
+.idea/

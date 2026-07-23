@@ -2,6 +2,7 @@
 // THRIVE COLLECTIVE - MURAL MAP
 // Three-tier geocoding: ORS + proxy -> Nominatim -> Direct parse
 // Two-pass loading: instant cache + background geocoding
+// Full descriptions in popups, no truncation
 // ============================================================
 
 // --- Global state ---
@@ -38,7 +39,6 @@ const nearestResults = document.getElementById('nearestResults');
 const muralViewSlider = document.getElementById('muralViewSlider');
 const muralViewLabel = document.getElementById('muralViewLabel');
 const clearAllFiltersBtn = document.getElementById('clearAllFiltersBtn');
-// const toggleDistricts = document.getElementById('toggleDistricts'); // removed – council districts not used
 const enableNarrator = document.getElementById('enableNarrator');
 const yearFilter = document.getElementById('yearFilter');
 const schoolsFilter = document.getElementById('schoolsFilter');
@@ -281,7 +281,7 @@ function createGreenIcon() {
     });
 }
 
-// --- Build popup content ---
+// --- Build popup content (FULL DESCRIPTION, no truncation) ---
 
 function buildPopupContent(mural) {
     var content = '<div style="max-width: ' + CONFIG.popup.maxWidth + 'px; max-height: ' + CONFIG.popup.maxHeight + 'px; overflow-y: auto; padding-right: 4px;">' +
@@ -305,12 +305,10 @@ function buildPopupContent(mural) {
         content += '<br><img src="' + escapeHtml(mural.imageUrl) + '" style="max-width: 100%; max-height: 180px; border-radius: 4px; object-fit: cover;" onerror="this.style.display=\'none\'">';
     }
 
+    // FULL DESCRIPTION – no truncation
     if (mural.description) {
         var descStr = String(mural.description);
-        var shortDesc = descStr.length > CONFIG.popup.descriptionTruncate
-            ? descStr.substring(0, CONFIG.popup.descriptionTruncate) + '...'
-            : descStr;
-        content += '<p class="mural-description" style="margin: 6px 0 0 0; font-size: 12px; line-height: 1.4; color: var(--text-main, #444);">' + escapeHtml(shortDesc) + '</p>';
+        content += '<p class="mural-description" style="margin: 6px 0 0 0; font-size: 12px; line-height: 1.4; color: var(--text-main, #444);">' + escapeHtml(descStr) + '</p>';
     }
 
     if (mural.detailUrl) {
@@ -827,19 +825,18 @@ function setupEventListeners() {
         muralViewLabel.textContent = '100%';
         muralViewSlider.style.setProperty('--val', 100);
         refreshMarkers();
-        // also clear search results dropdown
         if (searchResults) searchResults.classList.remove('visible');
         showToast('All filters cleared');
     });
 
+    // Search autocomplete
     searchInput.addEventListener('input', function() {
         var query = this.value.trim().toLowerCase();
         if (query.length === 0) {
             if (searchResults) searchResults.classList.remove('visible');
-            refreshMarkers(); // reset filter
+            refreshMarkers();
             return;
         }
-        // Filter murals by title or artist (case-insensitive)
         var matches = allMurals.filter(function(m) {
             return (m.title && m.title.toLowerCase().includes(query)) ||
                    (m.artist && m.artist.toLowerCase().includes(query));
@@ -851,7 +848,6 @@ function setupEventListeners() {
             }
             return;
         }
-        // Limit to 10 results
         var top = matches.slice(0, 10);
         var html = '';
         top.forEach(function(m) {
@@ -864,11 +860,9 @@ function setupEventListeners() {
             searchResults.innerHTML = html;
             searchResults.classList.add('visible');
         }
-        // Also update map markers (search filter already applied)
         refreshMarkers();
     });
 
-    // Click on search result
     if (searchResults) {
         searchResults.addEventListener('click', function(e) {
             var item = e.target.closest('.search-result-item');
@@ -884,7 +878,6 @@ function setupEventListeners() {
         });
     }
 
-    // Clear search button
     if (clearSearchBtn) {
         clearSearchBtn.addEventListener('click', function() {
             searchInput.value = '';
@@ -893,7 +886,6 @@ function setupEventListeners() {
         });
     }
 
-    // Surprise Me button
     if (surpriseMeBtn) {
         surpriseMeBtn.addEventListener('click', function() {
             var withCoords = allMurals.filter(function(m) { return m.lat && m.lng; });
@@ -962,8 +954,6 @@ function setupEventListeners() {
             if (tourItinerary.classList.contains('visible')) endTour();
         }
     });
-
-    // Remove the toggleDistricts listener entirely – not used
 }
 
 // --- Location handlers ---

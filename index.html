@@ -2,11 +2,10 @@
   ============================================================
   THRIVE COLLECTIVE – MURAL MAP
   ============================================================
-  Self‑contained HTML with inline config.
-  No external config.js required – works on GitHub Pages & Vercel.
+  Self-contained static site. Works on GitHub Pages, Netlify,
+  Vercel static, or opened directly from the file system.
   ============================================================
 -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,7 +15,6 @@
   <meta name="theme-color" content="#0f172a" />
   <title>Thrive Collective – Mural Map</title>
 
-  <!-- Favicon – now using the Thrive Collective logo -->
   <link rel="icon" href="ThriveCollective_BlackLogoHorizontal.png" type="image/png" sizes="any" />
 
   <!-- Leaflet & plugins CSS -->
@@ -105,9 +103,7 @@
 
 <div id="app">
 
-  <!-- ============================================================
-  SIDEBAR
-  ============================================================ -->
+  <!-- SIDEBAR -->
   <aside id="sidebar" role="complementary" aria-label="Controls and filters">
 
     <div class="mobile-sheet-handle" id="mobileSheetHandle" role="button" aria-label="Toggle panel" tabindex="0"></div>
@@ -289,26 +285,20 @@
   <!-- TOAST -->
   <div id="toast" class="toast hidden" role="alert" aria-live="polite"></div>
 
-</div> <!-- end #app -->
+</div><!-- end #app -->
 
 <!-- ============================================================
-INLINE CONFIGURATION – no external config.js needed
+CONFIG
+To update the data source or API key, edit the values below.
 ============================================================ -->
 <script>
-  // ============================================================
-  // CONFIG – inline definition
-  // ============================================================
-  // To use environment variables (e.g., on Vercel or with a build step),
-  // replace the values below with process.env.VAR_NAME.
-  // For GitHub Pages, you can edit these values directly.
-  // ============================================================
   const CONFIG = {
-    csvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQGG7nJALaHS51jJ7BEcfeu-MqPPoTXoU5hkJd1NE-tTn9W76gduRp5dPDoOEsQMFbd8LYm4Oq8-R9_/pub?output=csv',
+    csvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQGG7nJALaHS51jJ7BEcfeu-MqPPoTXUo5hkJd1NE-tTn9W76gduRp5dPDoOEsQMFbd8LYm4Oq8-R9_/pub?output=csv',
 
     geocoding: {
       primary: {
         endpoint: 'https://api.openrouteservice.org/geocode/search',
-        apiKey: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzMTkzMjU2M2NiYjRkOTc4ODE5ZmU2Y2IzNTg0OTBkIiwiaCI6Im11cm11cjY0In0=',
+        apiKey: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzMTkzMjU2M2NiYjRkOTc4ODE5ZmU2Y2IzNTg0OTBkIiwiaCI6Im11cm11cjY4In0=',
         proxy: 'https://corsproxy.io/?',
         delayBetweenRequests: 200
       },
@@ -347,8 +337,8 @@ INLINE CONFIGURATION – no external config.js needed
 
     popup: {
       maxWidth: 320,
-      maxHeight: 500,       // increased for full description
-      descriptionTruncate: 0 // 0 means no truncation (we show full description)
+      maxHeight: 500,
+      descriptionTruncate: 0
     },
 
     marker: {
@@ -365,24 +355,15 @@ INLINE CONFIGURATION – no external config.js needed
       title: 'Thrive Murals'
     }
   };
-
-  // For Node.js / module compatibility (if ever used)
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = CONFIG;
-  }
 </script>
 
-<!-- ============================================================
-JAVASCRIPT LIBRARIES
-============================================================ -->
+<!-- JS Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 
-<!-- ============================================================
-MAIN APPLICATION
-============================================================ -->
+<!-- Main app logic -->
 <script src="map.js"></script>
 
 </body>

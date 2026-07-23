@@ -1,4 +1,4 @@
-/* ============================================================
+ /* ============================================================
    THRIVE COLLECTIVE - MURAL MAP STYLES
    Leaflet version with full side panel UI
    ============================================================ */
@@ -277,22 +277,10 @@ body {
   margin-left: 12px;
 }
 
-.theme-toggle span:not(#themeToggleText) {
-  font-size: 16px;
-  margin-right: 8px;
-  line-height: 1;
-}
 .theme-toggle:hover {
   background: rgba(148, 163, 184, 0.1);
   border-color: var(--brand-blue);
   transform: scale(1.05);
-}
-
-.light-mode .sun-icon {
-  display: none;
-}
-body:not(.light-mode) .moon-icon {
-  display: none;
 }
 
 /* ── Utility Panel (Search) ── */
@@ -1124,102 +1112,268 @@ body:not(.light-mode) .moon-icon {
   background: rgba(251, 191, 36, 0.7);
 }
 
-/* ── Responsive ── */
-@media (max-width: 1024px) {
-  #sidebar {
-    left: clamp(12px, 3vw, 24px);
-    width: min(310px, calc(100% - 24px));
-  }
+/* ── Dark mode map tiles ── */
+/* Invert OSM tiles and hue-rotate to restore natural hues in dark mode */
+html.dark-mode .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(0.72) contrast(1.05) saturate(0.75);
+}
+html.dark-mode .leaflet-control-attribution a,
+html.dark-mode .leaflet-control-attribution {
+  color: #9ca3af;
+  background: rgba(15, 23, 42, 0.7) !important;
+}
+html.dark-mode .leaflet-control-zoom a {
+  background: rgba(17, 24, 39, 0.92) !important;
+  color: #f3f4f6 !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
 }
 
-@media (max-width: 900px) {
+/* ── Desktop layout — sidebar sits beside the map ── */
+@media (min-width: 769px) {
+  #app {
+    display: flex;
+    flex-direction: row;
+  }
   #sidebar {
-    top: 12px;
-    left: 12px;
-    right: 12px;
-    width: calc(100% - 24px);
-    max-height: calc(100vh - 80px);
-    border-radius: 18px;
-    padding: 18px 16px 22px;
+    position: relative;
+    top: 0;
+    left: 0;
+    width: 320px;
+    min-width: 280px;
+    max-width: 340px;
+    max-height: 100vh;
+    height: 100vh;
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+    border-right: 1px solid var(--panel-border);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+    flex-shrink: 0;
+    z-index: 10;
+    transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
   }
   #sidebar.hidden {
-    transform: translateY(calc(100% + 32px));
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    border: none;
+  }
+  #map-container {
+    position: relative;
+    flex: 1;
+    height: 100vh;
+    min-width: 0;
+  }
+  #map {
+    position: absolute;
+    inset: 0;
   }
   .sidebar-hide-btn {
+    /* Position inside sidebar top-right corner */
+    position: absolute;
     top: 14px;
     right: 14px;
     left: auto;
-    width: 40px;
-    height: 40px;
+    width: 30px;
+    height: 30px;
+    font-size: 18px;
+    z-index: 12;
   }
   .sidebar-show-tab {
-    bottom: 18px;
-    top: auto;
-    left: 12px;
-    width: 50px;
-    height: 68px;
+    position: fixed;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 64px;
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+    border-left: none;
+    z-index: 20;
   }
-  .location-actions {
+  .sidebar-show-tab:not(.hidden) {
+    display: flex;
+  }
+  #tourItinerary {
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(440px, calc(100% - 60px));
+    max-height: 48vh;
+  }
+}
+
+/* ── Mobile layout — full-width bottom-sheet sidebar ── */
+@media (max-width: 768px) {
+  html, body, #app {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
     flex-direction: column;
+    position: relative;
   }
-  .location-actions .primary-btn,
-  .location-actions .ghost-btn {
-    min-height: 46px;
-    font-size: 13px;
+
+  /* Map fills the full screen */
+  #map-container {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
   }
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Sidebar is a bottom sheet */
+  #sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    /* Collapsed: only the handle + header is visible */
+    max-height: 72px;
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    border-left: none;
+    border-right: none;
+    border-top: 1px solid var(--panel-border);
+    padding: 0 16px 0;
+    z-index: 100;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+    box-shadow: 0 -8px 32px rgba(2, 6, 23, 0.4);
+    gap: 0;
+  }
+
+  /* Expanded state */
+  #sidebar.mobile-expanded {
+    max-height: 82vh;
+    overflow-y: auto;
+    padding-bottom: 32px;
+    gap: 20px;
+  }
+
+  /* Hide the desktop hide btn on mobile */
+  .sidebar-hide-btn {
+    display: none !important;
+  }
+
+  /* Mobile drag handle + header area */
+  .mobile-sheet-handle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0 8px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .mobile-sheet-handle::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--panel-border);
+    margin-bottom: 10px;
+    transition: background 0.2s;
+  }
+  .mobile-sheet-handle:hover::before,
+  .mobile-sheet-handle:active::before {
+    background: var(--text-muted);
+  }
+
+  .sidebar-header {
+    width: 100%;
+    padding: 0 0 0;
+    margin-bottom: 0;
+  }
+
+  /* Expand / collapse driven purely by max-height + overflow */
+  /* No display toggling needed — overflow:hidden clips content when collapsed */
+  #sidebar.mobile-expanded .mobile-sheet-handle {
+    padding-bottom: 4px;
+  }
+  #sidebar.mobile-expanded {
+    gap: 20px;
+  }
+  #sidebar {
+    gap: 0;
+  }
+
+  /* Hide show-tab on mobile (handle is used instead) */
+  .sidebar-show-tab {
+    display: none !important;
+  }
+
+  /* Floating map buttons */
+  .leaflet-control-zoom {
+    margin-bottom: 90px !important;
+  }
+
+  /* Tour itinerary sits above the sidebar handle */
+  #tourItinerary {
+    position: fixed;
+    bottom: 80px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    transform: none;
+    max-height: 38vh;
+    border-radius: 14px;
+    z-index: 99;
+  }
+
+  /* Touch-friendly inputs and buttons */
   .filter-select,
   .address-input,
   #searchInput {
-    font-size: 15px;
-    min-height: 44px;
-  }
-  #tourItinerary {
-    width: calc(100% - 20px);
-    bottom: 16px;
-    max-height: 40vh;
-  }
-}
-
-@media (max-width: 480px) {
-  #sidebar {
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    width: calc(100% - 16px);
-    padding: 14px 12px 18px;
-    border-radius: 14px;
-  }
-  .sidebar-header .logo {
-    max-width: 120px;
-  }
-  .theme-toggle {
-    font-size: 11px;
-    padding: 0 8px;
-    height: 30px;
+    font-size: 16px; /* prevents iOS zoom on focus */
+    min-height: 46px;
   }
   .primary-btn,
   .ghost-btn {
-    font-size: 11px;
-    padding: 8px 10px;
+    min-height: 46px;
+    font-size: 13px;
+  }
+  .location-actions {
+    gap: 8px;
   }
   .custom-tour-header-btn {
-    font-size: 12px;
-    padding: 12px 14px;
+    min-height: 52px;
+    font-size: 14px;
+  }
+  .recent-card {
+    padding: 14px 16px;
   }
   .modal-content {
     max-width: 100%;
-    margin: 10px;
+    max-height: 90vh;
+    border-radius: 18px 18px 0 0;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
   }
-  #tourItinerary {
-    padding: 12px;
-    max-height: 35vh;
+  .modal {
+    align-items: flex-end;
+  }
+  #map-loading,
+  #map-error {
+    top: 12px;
+    font-size: 12px;
+    max-width: calc(100% - 32px);
   }
 }
-
-/* ── Dark mode map filter (optional, keep map tiles natural) ── */
-/* If you want dark map tiles, uncomment the block below and use a dark tile layer in config.js instead */
-/*
-html:not(.light-mode) .leaflet-tile-pane {
-  filter: invert(100%) hue-rotate(180deg) brightness(0.9) contrast(1.2);
-}
-*/

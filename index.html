@@ -33,14 +33,19 @@
   <meta name="theme-color" content="#0f172a" />
   <title>Thrive Collective – Mural Map</title>
 
-  <!-- ===== FAVICON (inline SVG) ===== -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+  <!-- ===== FAVICON (inline SVG – green circle matching mural marker) ===== -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='44' fill='%234CAF50' stroke='%232E7D32' stroke-width='6'/><circle cx='50' cy='38' r='14' fill='%2381C784'/></svg>" />
 
   <!-- ===== LEAFLET AND PLUGIN STYLES ===== -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+
+  <!-- ===== GOOGLE FONTS ===== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- ===== CUSTOM STYLES ===== -->
   <link rel="stylesheet" href="style.css" />
@@ -55,7 +60,10 @@
   ============================================================ -->
   <aside id="sidebar" role="complementary" aria-label="Controls and filters">
 
-    <!-- Hide Sidebar Button -->
+    <!-- Mobile drag handle (tap to expand/collapse the bottom sheet) -->
+    <div class="mobile-sheet-handle" id="mobileSheetHandle" role="button" aria-label="Toggle panel" tabindex="0"></div>
+
+    <!-- Hide Sidebar Button (desktop only) -->
     <button id="sidebarHideBtn" class="sidebar-hide-btn" aria-label="Hide sidebar" title="Hide sidebar">
       <span aria-hidden="true">&#8249;</span>
     </button>
@@ -64,8 +72,6 @@
     <header class="sidebar-header">
       <img src="ThriveCollective_BlackLogoHorizontal.png" alt="Thrive Collective logo" class="logo" />
       <button id="themeToggle" class="theme-toggle" aria-label="Toggle light/dark mode" title="Switch theme">
-        <span class="sun-icon" aria-hidden="true">☀️</span>
-        <span class="moon-icon" aria-hidden="true">🌙</span>
         <span id="themeToggleText">Light Mode</span>
       </button>
     </header>

@@ -228,6 +228,23 @@ async function geocodeAddress(address) {
     return null;
 }
 
+// --- Direct lat/lng detection (skips geocoding API for coordinate strings) ---
+
+function parseLatLng(text) {
+    if (!text) return null;
+    var str = String(text).trim();
+    // Match "lat, lng" or "lat lng" patterns (both decimal)
+    var m = str.match(/^(-?\d{1,3}(?:\.\d+)?)[,\s]+(-?\d{1,3}(?:\.\d+)?)$/);
+    if (m) {
+        var lat = parseFloat(m[1]);
+        var lng = parseFloat(m[2]);
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && (lat !== 0 || lng !== 0)) {
+            return { lat: lat, lng: lng };
+        }
+    }
+    return null;
+}
+
 // --- Create green dot icon ---
 
 function createGreenIcon() {
@@ -322,7 +339,9 @@ window.toggleSaveMural = function(title, address) {
     refreshMarkers();
 };
 
-// --- Load CSV with geocoding ---
+// --- Load CSV with two-pass strategy ---
+// Pass 1 (synchronous): load all murals that have direct lat/lng coords or cached geocodes — instant.
+// Pass 2 (async, background): geocode remaining real street addresses with API, adding them as they resolve.
 
 async function loadMurals() {
     loadingEl.classList.remove('hidden');
@@ -353,30 +372,17 @@ async function loadMurals() {
         var validRows = rows.filter(function(row) { return !shouldSkipRow(row); });
         console.log('Found ' + validRows.length + ' valid mural entries');
 
-        // Check cache status
-        var cache = loadGeocodeCache();
-        var cachedCount = Object.keys(cache).length;
-        console.log('Cache has ' + cachedCount + ' geocoded addresses');
+        var geocodeCache = loadGeocodeCache();
+        console.log('Cache has ' + Object.keys(geocodeCache).length + ' geocoded addresses');
 
         // Show map immediately
         initMap();
 
-        var geocodedCount = 0;
-        var failedCount = 0;
-        var processedCount = 0;
-        var totalToProcess = validRows.length;
-
         // Reset murals
         allMurals = [];
+        var needsGeocoding = [];
 
-        // Get delay from config (primary or root)
-        var delay = 200;
-        if (primaryConfig && primaryConfig.delayBetweenRequests) {
-            delay = primaryConfig.delayBetweenRequests;
-        } else if (geoConfig && geoConfig.delayBetweenRequests) {
-            delay = geoConfig.delayBetweenRequests;
-        }
-
+        // ── PASS 1: instant load from direct coords or cache (synchronous) ──
         for (var k = 0; k < validRows.length; k++) {
             var row = validRows[k];
             var title = getValue(row, 'name') || 'Untitled Mural';
@@ -389,48 +395,43 @@ async function loadMurals() {
             var detailUrl = getValue(row, 'detailUrl') || '';
             var address = getValue(row, 'streetAddress') || '';
             var status = getValue(row, 'status') || '';
-
-            var locationText = address || getValue(row, 'lat') || '';
+            var locationText = String(address || '').trim();
 
             var mural = {
-                title: title,
-                artist: artist,
-                year: year,
-                borough: borough,
-                neighborhood: neighborhood,
-                description: description,
-                imageUrl: imageUrl,
-                detailUrl: detailUrl,
-                address: address,
-                status: status,
-                locationText: locationText
+                title: title, artist: artist, year: year, borough: borough,
+                neighborhood: neighborhood, description: description,
+                imageUrl: imageUrl, detailUrl: detailUrl,
+                address: address, status: status, locationText: locationText
             };
 
-            if (locationText && String(locationText).length > 5) {
-                var coords = await geocodeAddress(locationText);
-                if (coords) {
-                    mural.lat = coords.lat;
-                    mural.lng = coords.lng;
-                    geocodedCount++;
+            if (locationText.length > 3) {
+                // Sub-path A: already lat/lng coordinates
+                var directCoords = parseLatLng(locationText);
+                if (directCoords) {
+                    mural.lat = directCoords.lat;
+                    mural.lng = directCoords.lng;
                     allMurals.push(mural);
-                } else {
-                    failedCount++;
+                    continue;
                 }
-            }
 
-            processedCount++;
-            if (processedCount % 10 === 0 || processedCount === totalToProcess) {
-                updateLoadingProgress(processedCount, totalToProcess, 'Geocoding');
-            }
+                // Sub-path B: real address — check cache first
+                var cacheKey = CACHE_VERSION + '_' + locationText.toLowerCase().replace(/\s+/g, '_');
+                var cachedCoords = geocodeCache[cacheKey] || null;
+                if (cachedCoords) {
+                    mural.lat = cachedCoords.lat;
+                    mural.lng = cachedCoords.lng;
+                    allMurals.push(mural);
+                    continue;
+                }
 
-            // Delay between API calls
-            await new Promise(function(resolve) { setTimeout(resolve, delay); });
+                // Not cached — queue for Pass 2
+                needsGeocoding.push({ mural: mural, locationText: locationText });
+            }
         }
 
-        console.log('Geocoded ' + geocodedCount + ' murals, failed ' + failedCount);
-        console.log('Total murals loaded: ' + allMurals.length);
+        console.log('Pass 1 complete: ' + allMurals.length + ' murals loaded instantly, ' + needsGeocoding.length + ' need geocoding');
 
-        // Update UI
+        // Paint everything we have right away
         populateFilters();
         refreshMarkers();
         updateRecentList();
@@ -438,14 +439,54 @@ async function loadMurals() {
         updateFeatured();
         updateTourSummary();
 
-        loadingEl.classList.add('hidden');
-
-        if (allMurals.length === 0) {
-            errorEl.textContent = 'No murals could be geocoded. Please check your data or geocoding configuration.';
+        if (allMurals.length === 0 && needsGeocoding.length === 0) {
+            errorEl.textContent = 'No murals found. Please check your data source.';
             errorEl.classList.remove('hidden');
-        } else {
-            showToast('Loaded ' + allMurals.length + ' murals!');
+            loadingEl.classList.add('hidden');
+            return;
         }
+
+        if (needsGeocoding.length === 0) {
+            loadingEl.classList.add('hidden');
+            showToast('Loaded ' + allMurals.length + ' murals!');
+            return;
+        }
+
+        // Show initial count and indicate geocoding is running
+        loadingEl.textContent = allMurals.length + ' murals loaded — geocoding ' + needsGeocoding.length + ' more…';
+        showToast('Showing ' + allMurals.length + ' murals. ' + needsGeocoding.length + ' more loading…');
+
+        // ── PASS 2: geocode remaining addresses in the background ──
+        var delay = (primaryConfig && primaryConfig.delayBetweenRequests) || 300;
+        var geocodedCount = 0;
+
+        for (var i = 0; i < needsGeocoding.length; i++) {
+            var item = needsGeocoding[i];
+            var coords = await geocodeAddress(item.locationText);
+            if (coords) {
+                item.mural.lat = coords.lat;
+                item.mural.lng = coords.lng;
+                allMurals.push(item.mural);
+                geocodedCount++;
+            }
+            // Yield to browser between API calls
+            await new Promise(function(resolve) { setTimeout(resolve, delay); });
+
+            // Progressive repaint every 10 newly geocoded murals
+            if (geocodedCount > 0 && geocodedCount % 10 === 0) {
+                refreshMarkers();
+                updateLoadingProgress(i + 1, needsGeocoding.length, 'Geocoding');
+            }
+        }
+
+        console.log('Pass 2 complete: geocoded ' + geocodedCount + ' of ' + needsGeocoding.length + ' addresses');
+        console.log('Total murals loaded: ' + allMurals.length);
+
+        populateFilters();
+        refreshMarkers();
+        updateTourSummary();
+        loadingEl.classList.add('hidden');
+        showToast('All ' + allMurals.length + ' murals loaded!');
 
     } catch (error) {
         console.error('Error loading murals:', error);
@@ -478,7 +519,7 @@ function populateFilters() {
 
     yearFilter.innerHTML = '<option value="">All Years</option>';
     for (var y = 0; y < years.length; y++) {
-        yearFilter.innerHTML += '<option value="' + escapeHtml(years[y]) + '">' + escapeHtml(years[y]) + '</option>';
+        yearFilter.innerHTML += '<option value="' + escapeHtml(String(years[y])) + '">' + escapeHtml(String(years[y])) + '</option>';
     }
 
     schoolsFilter.innerHTML = '<option value="">All Schools / Sites</option>';
@@ -585,7 +626,8 @@ function refreshMarkers() {
             var descMatch = (mural.description || '').toLowerCase().includes(searchTerm);
             if (!titleMatch && !artistMatch && !descMatch) return false;
         }
-        if (year && mural.year !== year) return false;
+        // Compare as strings to handle dynamicTyping year vs. string select value
+        if (year && String(mural.year) !== String(year)) return false;
         if (school && mural.neighborhood !== school) return false;
         if (borough && mural.borough !== borough) return false;
         return true;
@@ -643,7 +685,7 @@ function updateNearestResults(lat, lng) {
         var m = item.mural;
         html += '<div class="nearest-card" onclick="zoomToMural(\'' + escapeHtml(m.title) + '\', ' + m.lat + ', ' + m.lng + ')">' +
             '<header><h3>' + escapeHtml(m.title) + '</h3><span class="distance-pill">' + item.distance.toFixed(1) + ' mi</span></header>' +
-            '<p>' + escapeHtml(m.artist) + (m.borough ? ' · ' + escapeHtml(m.borough) : '') + '</p>' +
+            '<p>' + escapeHtml(m.artist) + (m.borough ? ' &middot; ' + escapeHtml(m.borough) : '') + '</p>' +
             '<footer>' +
             '<button onclick="event.stopPropagation(); zoomToMural(\'' + escapeHtml(m.title) + '\', ' + m.lat + ', ' + m.lng + ')">View on Map</button>' +
             '<button onclick="event.stopPropagation(); addToTour(' + j + ')">Add to Tour</button>' +
@@ -695,7 +737,7 @@ function updateRecentList() {
         var m = recentMurals[i];
         html += '<div class="recent-card" onclick="zoomToMural(\'' + escapeHtml(m.title) + '\', ' + m.lat + ', ' + m.lng + ')">' +
             '<h4>' + escapeHtml(m.title) + '</h4>' +
-            '<p>' + escapeHtml(m.artist) + (m.borough ? ' · ' + escapeHtml(m.borough) : '') + '</p></div>';
+            '<p>' + escapeHtml(m.artist) + (m.borough ? ' &middot; ' + escapeHtml(m.borough) : '') + '</p></div>';
     }
     recentMuralsList.innerHTML = html;
 }
@@ -710,7 +752,7 @@ function updateSavedList() {
         var m = savedMurals[i];
         html += '<div class="recent-card" onclick="zoomToMural(\'' + escapeHtml(m.title) + '\', ' + m.lat + ', ' + m.lng + ')">' +
             '<h4>' + escapeHtml(m.title) + '</h4>' +
-            '<p>' + escapeHtml(m.artist) + (m.borough ? ' · ' + escapeHtml(m.borough) : '') + '</p></div>';
+            '<p>' + escapeHtml(m.artist) + (m.borough ? ' &middot; ' + escapeHtml(m.borough) : '') + '</p></div>';
     }
     savedMuralsList.innerHTML = html;
 }
@@ -723,22 +765,24 @@ function updateFeatured() {
         var m = featuredMurals[i];
         html += '<div class="recent-card featured-card" onclick="zoomToMural(\'' + escapeHtml(m.title) + '\', ' + m.lat + ', ' + m.lng + ')">' +
             '<h4>' + escapeHtml(m.title) + '</h4>' +
-            '<p>' + escapeHtml(m.artist) + (m.borough ? ' · ' + escapeHtml(m.borough) : '') + '</p></div>';
+            '<p>' + escapeHtml(m.artist) + (m.borough ? ' &middot; ' + escapeHtml(m.borough) : '') + '</p></div>';
     }
     featuredMuralsList.innerHTML = html;
 }
 
 // --- Theme ---
+// Note: no emoji used – theme label is text-only
 
 function applyTheme() {
+    var toggleTextEl = document.getElementById('themeToggleText');
     if (isDarkMode) {
         document.documentElement.classList.remove('light-mode');
         document.documentElement.classList.add('dark-mode');
-        themeToggle.innerHTML = '<span class="sun-icon">☀️</span><span class="moon-icon">🌙</span><span id="themeToggleText">Dark Mode</span>';
+        if (toggleTextEl) toggleTextEl.textContent = 'Light Mode';
     } else {
         document.documentElement.classList.add('light-mode');
         document.documentElement.classList.remove('dark-mode');
-        themeToggle.innerHTML = '<span class="sun-icon">☀️</span><span class="moon-icon">🌙</span><span id="themeToggleText">Light Mode</span>';
+        if (toggleTextEl) toggleTextEl.textContent = 'Dark Mode';
     }
 }
 
@@ -753,6 +797,25 @@ function toggleTheme() {
 function setupEventListeners() {
     themeToggle.addEventListener('click', toggleTheme);
 
+    // --- Mobile bottom-sheet toggle ---
+    var mobileHandle = document.getElementById('mobileSheetHandle');
+    if (mobileHandle) {
+        function isMobile() { return window.innerWidth <= 768; }
+        function toggleMobileSheet() {
+            if (!isMobile()) return;
+            sidebar.classList.toggle('mobile-expanded');
+        }
+        mobileHandle.addEventListener('click', toggleMobileSheet);
+        mobileHandle.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMobileSheet(); }
+        });
+        // Close sheet when user taps map on mobile
+        document.getElementById('map').addEventListener('click', function() {
+            if (isMobile()) sidebar.classList.remove('mobile-expanded');
+        });
+    }
+
+    // --- Desktop hide/show sidebar ---
     sidebarHideBtn.addEventListener('click', function() {
         sidebar.classList.add('hidden');
         sidebarShowTab.classList.remove('hidden');
@@ -800,7 +863,7 @@ function setupEventListeners() {
     toggleSearchFiltersBtn.addEventListener('click', function() {
         var isVisible = searchFiltersContainer.style.display !== 'none';
         searchFiltersContainer.style.display = isVisible ? 'none' : 'flex';
-        toggleSearchFiltersIcon.textContent = isVisible ? '+' : '−';
+        toggleSearchFiltersIcon.textContent = isVisible ? '+' : '\u2212';
     });
 
     refreshFeaturedBtn.addEventListener('click', updateFeatured);
@@ -808,7 +871,7 @@ function setupEventListeners() {
     enableNarrator.addEventListener('change', function(e) {
         narratorEnabled = e.target.checked;
         if (narratorEnabled) {
-            showToast('Narrator enabled – popups will be read aloud');
+            showToast('Narrator enabled - popups will be read aloud');
         } else {
             showToast('Narrator disabled');
             if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1085,7 +1148,7 @@ function showTourItinerary(tour) {
         var distance = m.distance || 0;
         html += '<div class="tour-stop-item" data-index="' + i + '" onclick="navigateTourTo(' + i + ')">' +
             '<strong>' + (i + 1) + '.</strong> ' + escapeHtml(m.title) +
-            '<span style="color: var(--text-muted); font-size: 12px;">(' + distance.toFixed(1) + ' mi)</span></div>';
+            ' <span style="color: var(--text-muted); font-size: 12px;">(' + distance.toFixed(1) + ' mi)</span></div>';
     }
     tourStopsList.innerHTML = html;
 

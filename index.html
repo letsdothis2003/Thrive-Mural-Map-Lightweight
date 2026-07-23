@@ -43,13 +43,95 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
 
   <!-- ===== GOOGLE FONTS ===== -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <!-- ===== CUSTOM STYLES ===== -->
   <link rel="stylesheet" href="style.css" />
 
+  <!-- ===== INLINE STYLES FOR SEARCH DROPDOWN & MINOR TWEAKS ===== -->
+  <style>
+    /* Search results dropdown – appears below the search input */
+    .search-results-dropdown {
+      position: relative;
+      width: 100%;
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      box-shadow: var(--panel-shadow);
+      display: none;
+      z-index: 20;
+      margin-top: 0;
+      backdrop-filter: blur(12px);
+    }
+    .search-results-dropdown.visible {
+      display: block;
+    }
+    .search-result-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-main);
+      border-bottom: 1px solid var(--panel-border);
+      transition: background 0.15s;
+    }
+    .search-result-item:hover {
+      background: rgba(59, 130, 246, 0.15);
+    }
+    .search-result-item .result-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: block;
+    }
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+    /* Small clear button for search */
+    .search-wrapper {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .search-wrapper input {
+      flex: 1;
+    }
+    .clear-search-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .clear-search-btn:hover {
+      background: var(--input-focus-bg);
+      color: var(--text-main);
+      border-color: var(--brand-blue);
+    }
+    /* Surprise Me button */
+    .surprise-btn {
+      background: var(--brand-pink);
+      color: #0f172a;
+      border: none;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+      box-shadow: 0 2px 8px rgba(244, 114, 182, 0.3);
+    }
+    .surprise-btn:hover {
+      transform: scale(1.05);
+    }
+  </style>
 </head>
 <body>
 
@@ -151,13 +233,7 @@
         <button id="clearAllFiltersBtn" class="ghost-btn" style="width: 100%; margin-top: 5px;">Clear All Filters</button>
       </div>
 
-      <div class="filter-group" style="margin-top: 15px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
-        <label style="display: flex; align-items: center; cursor: pointer; color: var(--text-main);">
-          <input type="checkbox" id="toggleDistricts" checked style="margin-right: 10px; width: 18px; height: 18px;" />
-          Show Council Districts
-        </label>
-      </div>
-
+      <!-- Narrator toggle -->
       <div class="filter-group" style="margin-top: 10px;">
         <label style="display: flex; align-items: center; cursor: pointer; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.02em;">
           <input type="checkbox" id="enableNarrator" style="margin-right: 10px; width: 18px; height: 18px;" />
@@ -165,9 +241,16 @@
         </label>
       </div>
 
+      <!-- ====== SEARCH WITH DROPDOWN ====== -->
       <div class="filter-group" style="margin-top: 20px;">
-        <label for="searchInput">Search</label>
-        <input type="text" id="searchInput" placeholder="Search Murals..." aria-label="Search murals by title, artist, or description" />
+        <label for="searchInput">Search Murals</label>
+        <div class="search-wrapper">
+          <input type="text" id="searchInput" placeholder="Type mural title, artist, or description..." aria-label="Search murals" />
+          <button id="clearSearchBtn" class="clear-search-btn" title="Clear search">✕</button>
+          <button id="surpriseMeBtn" class="surprise-btn" title="Go to a random mural">🎲 Surprise Me</button>
+        </div>
+        <!-- Search results dropdown -->
+        <div id="searchResults" class="search-results-dropdown"></div>
       </div>
 
       <!-- Advanced Search Filters Toggle -->
@@ -200,6 +283,16 @@
           </div>
         </div>
       </div>
+
+      <!-- Optional: Council Districts toggle (commented out – code removed) -->
+      <!--
+      <div class="filter-group" style="margin-top: 15px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
+        <label style="display: flex; align-items: center; cursor: pointer; color: var(--text-main);">
+          <input type="checkbox" id="toggleDistricts" style="margin-right: 10px; width: 18px; height: 18px;" />
+          Show Council Districts
+        </label>
+      </div>
+      -->
     </section>
 
     <!-- ============================================================
@@ -232,6 +325,8 @@
     <!-- Sidebar footer with attribution -->
     <footer style="border-top: 1px solid var(--panel-border); padding-top: 12px; margin-top: 8px; font-size: 10px; color: var(--text-muted); text-align: center;">
       Data &copy; Thrive Collective &bull; Map &copy; OpenStreetMap contributors
+      <br />
+      <span style="font-size: 9px; opacity: 0.6;">Built with Leaflet &amp; ❤️</span>
     </footer>
   </aside>
 

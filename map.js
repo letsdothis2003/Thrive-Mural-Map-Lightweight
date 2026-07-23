@@ -18,7 +18,6 @@ let narratorEnabled = false;
 let savedMurals = JSON.parse(localStorage.getItem('savedMurals') || '[]');
 let recentMurals = JSON.parse(localStorage.getItem('recentMurals') || '[]');
 let isDarkMode = localStorage.getItem('theme') !== 'light';
-let geocodingProgress = 0;
 
 // --- DOM refs ---
 const loadingEl = document.getElementById('map-loading');
@@ -28,6 +27,9 @@ const sidebarHideBtn = document.getElementById('sidebarHideBtn');
 const sidebarShowTab = document.getElementById('sidebarShowTab');
 const themeToggle = document.getElementById('themeToggle');
 const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+const surpriseMeBtn = document.getElementById('surpriseMeBtn');
 const manualAddressInput = document.getElementById('manual-address-input');
 const startSearchBtn = document.getElementById('start-search-btn');
 const useDeviceGpsBtn = document.getElementById('use-device-gps-btn');
@@ -36,7 +38,7 @@ const nearestResults = document.getElementById('nearestResults');
 const muralViewSlider = document.getElementById('muralViewSlider');
 const muralViewLabel = document.getElementById('muralViewLabel');
 const clearAllFiltersBtn = document.getElementById('clearAllFiltersBtn');
-const toggleDistricts = document.getElementById('toggleDistricts');
+// const toggleDistricts = document.getElementById('toggleDistricts'); // removed – council districts not used
 const enableNarrator = document.getElementById('enableNarrator');
 const yearFilter = document.getElementById('yearFilter');
 const schoolsFilter = document.getElementById('schoolsFilter');
@@ -177,7 +179,6 @@ function setCachedCoords(address, lat, lng) {
 function parseLatLng(text) {
     if (!text) return null;
     var str = String(text).trim();
-    // Match "lat, lng" or "lat lng" with optional comma and spaces
     var m = str.match(/^(-?\d{1,3}(?:\.\d+)?)[,\s]+(-?\d{1,3}(?:\.\d+)?)$/);
     if (m) {
         var lat = parseFloat(m[1]);
@@ -196,13 +197,9 @@ async function geocodeAddress(address) {
     var addressStr = String(address).trim();
     if (addressStr.length < 5) return null;
 
-    // Check cache first (fastest)
     var cached = getCachedCoords(addressStr);
-    if (cached) {
-        return cached;
-    }
+    if (cached) return cached;
 
-    // OPTION 3: Try direct coordinate parsing first (no API call)
     if (directParseEnabled) {
         var directCoords = parseLatLng(addressStr);
         if (directCoords) {
@@ -213,13 +210,10 @@ async function geocodeAddress(address) {
 
     var cleanAddress = addressStr.replace(/\s*,\s*,/g, ',').replace(/,\s*$/, '').trim();
 
-    // ------------------------------------------------------------------
-    // OPTION 1: OpenRouteService (ORS) with optional CORS proxy
-    // ------------------------------------------------------------------
+    // --- ORS with proxy ---
     var primaryEndpoint = primaryConfig.endpoint;
     var primaryApiKey = primaryConfig.apiKey;
     var proxy = primaryConfig.proxy || '';
-
     if (primaryEndpoint && primaryApiKey) {
         try {
             var url = proxy + primaryEndpoint + '?api_key=' + primaryApiKey + '&text=' + encodeURIComponent(cleanAddress) + '&size=1';
@@ -241,9 +235,7 @@ async function geocodeAddress(address) {
         console.warn('ORS geocoder not configured (missing endpoint or apiKey)');
     }
 
-    // ------------------------------------------------------------------
-    // OPTION 2: Nominatim (OpenStreetMap) – free, no API key, no CORS
-    // ------------------------------------------------------------------
+    // --- Nominatim fallback ---
     if (fallbackConfig && fallbackConfig.endpoint) {
         try {
             var fallbackUrl = fallbackConfig.endpoint + '?q=' + encodeURIComponent(cleanAddress) + '&format=json&limit=1';
@@ -325,13 +317,7 @@ function buildPopupContent(mural) {
         content += '<p style="margin: 6px 0 0 0;"><a href="' + escapeHtml(mural.detailUrl) + '" target="_blank" style="color: #4CAF50; font-weight: bold; font-size: 13px; text-decoration: none; border: 1px solid #4CAF50; padding: 4px 12px; border-radius: 4px; display: inline-block;">Learn More</a></p>';
     }
 
-    var isSaved = false;
-    for (var i = 0; i < savedMurals.length; i++) {
-        if (savedMurals[i].title === mural.title && savedMurals[i].address === mural.address) {
-            isSaved = true;
-            break;
-        }
-    }
+    var isSaved = savedMurals.some(function(m) { return m.title === mural.title && m.address === mural.address; });
     content += '<p style="margin: 8px 0 0 0;">' +
         '<button onclick="toggleSaveMural(\'' + escapeHtml(mural.title) + '\', \'' + escapeHtml(mural.address) + '\')" ' +
         'style="background: ' + (isSaved ? '#ef4444' : '#4CAF50') + '; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">' +
@@ -344,24 +330,12 @@ function buildPopupContent(mural) {
 
 // --- Toggle save ---
 window.toggleSaveMural = function(title, address) {
-    var index = -1;
-    for (var i = 0; i < savedMurals.length; i++) {
-        if (savedMurals[i].title === title && savedMurals[i].address === address) {
-            index = i;
-            break;
-        }
-    }
+    var index = savedMurals.findIndex(function(m) { return m.title === title && m.address === address; });
     if (index > -1) {
         savedMurals.splice(index, 1);
         showToast('Removed from saved murals');
     } else {
-        var mural = null;
-        for (var j = 0; j < allMurals.length; j++) {
-            if (allMurals[j].title === title && allMurals[j].address === address) {
-                mural = allMurals[j];
-                break;
-            }
-        }
+        var mural = allMurals.find(function(m) { return m.title === title && m.address === address; });
         if (mural) {
             savedMurals.push(mural);
             showToast('Saved!');
@@ -436,18 +410,15 @@ async function loadMurals() {
             };
 
             if (locationText.length > 3) {
-                // Try direct parse first (no cache needed)
                 var directCoords = parseLatLng(locationText);
                 if (directCoords) {
                     mural.lat = directCoords.lat;
                     mural.lng = directCoords.lng;
-                    // Cache the direct parse result
                     setCachedCoords(locationText, directCoords.lat, directCoords.lng);
                     allMurals.push(mural);
                     continue;
                 }
 
-                // Check cache
                 var cacheKey = CACHE_VERSION + '_' + locationText.toLowerCase().replace(/\s+/g, '_');
                 var cachedCoords = geocodeCache[cacheKey] || null;
                 if (cachedCoords) {
@@ -457,7 +428,6 @@ async function loadMurals() {
                     continue;
                 }
 
-                // Not cached — queue for Pass 2
                 needsGeocoding.push({ mural: mural, locationText: locationText });
             }
         }
@@ -502,8 +472,6 @@ async function loadMurals() {
                 geocodedCount++;
             } else {
                 failedCount++;
-                // Still keep the mural but without coordinates (it won't show on map)
-                // We could optionally add it with a flag, but we'll skip it for now
             }
             await new Promise(function(resolve) { setTimeout(resolve, delay); });
 
@@ -741,24 +709,12 @@ function getDistance(lat1, lng1, lat2, lng2) {
 
 window.zoomToMural = function(title, lat, lng) {
     map.setView([lat, lng], 16);
-    var mural = null;
-    for (var i = 0; i < allMurals.length; i++) {
-        if (allMurals[i].title === title && allMurals[i].lat === lat && allMurals[i].lng === lng) {
-            mural = allMurals[i];
-            break;
-        }
-    }
+    var mural = allMurals.find(function(m) { return m.title === title && m.lat === lat && m.lng === lng; });
     if (mural) addToRecent(mural);
 };
 
 function addToRecent(mural) {
-    var filtered = [];
-    for (var i = 0; i < recentMurals.length; i++) {
-        if (recentMurals[i].title !== mural.title || recentMurals[i].address !== mural.address) {
-            filtered.push(recentMurals[i]);
-        }
-    }
-    recentMurals = filtered;
+    recentMurals = recentMurals.filter(function(m) { return m.title !== mural.title || m.address !== mural.address; });
     recentMurals.unshift(mural);
     if (recentMurals.length > 20) recentMurals.pop();
     localStorage.setItem('recentMurals', JSON.stringify(recentMurals));
@@ -871,14 +827,88 @@ function setupEventListeners() {
         muralViewLabel.textContent = '100%';
         muralViewSlider.style.setProperty('--val', 100);
         refreshMarkers();
+        // also clear search results dropdown
+        if (searchResults) searchResults.classList.remove('visible');
         showToast('All filters cleared');
     });
 
-    searchInput.addEventListener('input', refreshMarkers);
+    searchInput.addEventListener('input', function() {
+        var query = this.value.trim().toLowerCase();
+        if (query.length === 0) {
+            if (searchResults) searchResults.classList.remove('visible');
+            refreshMarkers(); // reset filter
+            return;
+        }
+        // Filter murals by title or artist (case-insensitive)
+        var matches = allMurals.filter(function(m) {
+            return (m.title && m.title.toLowerCase().includes(query)) ||
+                   (m.artist && m.artist.toLowerCase().includes(query));
+        });
+        if (matches.length === 0) {
+            if (searchResults) {
+                searchResults.innerHTML = '<div class="search-result-item">No matches found</div>';
+                searchResults.classList.add('visible');
+            }
+            return;
+        }
+        // Limit to 10 results
+        var top = matches.slice(0, 10);
+        var html = '';
+        top.forEach(function(m) {
+            html += '<div class="search-result-item" data-lat="' + m.lat + '" data-lng="' + m.lng + '" data-title="' + escapeHtml(m.title) + '">' +
+                escapeHtml(m.title) +
+                '<span class="result-sub">' + escapeHtml(m.artist) + (m.borough ? ' · ' + escapeHtml(m.borough) : '') + '</span>' +
+                '</div>';
+        });
+        if (searchResults) {
+            searchResults.innerHTML = html;
+            searchResults.classList.add('visible');
+        }
+        // Also update map markers (search filter already applied)
+        refreshMarkers();
+    });
+
+    // Click on search result
+    if (searchResults) {
+        searchResults.addEventListener('click', function(e) {
+            var item = e.target.closest('.search-result-item');
+            if (!item) return;
+            var lat = parseFloat(item.dataset.lat);
+            var lng = parseFloat(item.dataset.lng);
+            var title = item.dataset.title;
+            if (lat && lng) {
+                window.zoomToMural(title, lat, lng);
+                searchResults.classList.remove('visible');
+                searchInput.value = title;
+            }
+        });
+    }
+
+    // Clear search button
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', function() {
+            searchInput.value = '';
+            if (searchResults) searchResults.classList.remove('visible');
+            refreshMarkers();
+        });
+    }
+
+    // Surprise Me button
+    if (surpriseMeBtn) {
+        surpriseMeBtn.addEventListener('click', function() {
+            var withCoords = allMurals.filter(function(m) { return m.lat && m.lng; });
+            if (withCoords.length === 0) {
+                showToast('No murals loaded yet.');
+                return;
+            }
+            var random = withCoords[Math.floor(Math.random() * withCoords.length)];
+            window.zoomToMural(random.title, random.lat, random.lng);
+        });
+    }
+
     yearFilter.addEventListener('change', refreshMarkers);
     schoolsFilter.addEventListener('change', refreshMarkers);
     boroughFilter.addEventListener('change', refreshMarkers);
-    toggleDistricts.addEventListener('change', refreshMarkers);
 
     toggleSearchFiltersBtn.addEventListener('click', function() {
         var isVisible = searchFiltersContainer.style.display !== 'none';
@@ -932,6 +962,8 @@ function setupEventListeners() {
             if (tourItinerary.classList.contains('visible')) endTour();
         }
     });
+
+    // Remove the toggleDistricts listener entirely – not used
 }
 
 // --- Location handlers ---
@@ -953,10 +985,7 @@ async function handleAddressSearch() {
         currentLocation = coords;
         map.setView([coords.lat, coords.lng], 14);
         updateNearestResults(coords.lat, coords.lng);
-        var nearbyCount = 0;
-        for (var i = 0; i < allMurals.length; i++) {
-            if (allMurals[i].lat && allMurals[i].lng) nearbyCount++;
-        }
+        var nearbyCount = allMurals.filter(function(m) { return m.lat && m.lng; }).length;
         showToast('Found ' + nearbyCount + ' murals nearby');
         addYouAreHereMarker(coords.lat, coords.lng);
     } else {
@@ -996,14 +1025,10 @@ function handleGpsSearch() {
 
 function clearLocation() {
     currentLocation = null;
-    if (userLocationMarker) {
-        map.removeLayer(userLocationMarker);
-        userLocationMarker = null;
-    }
-    if (youAreHereLabel) {
-        map.removeLayer(youAreHereLabel);
-        youAreHereLabel = null;
-    }
+    if (userLocationMarker) map.removeLayer(userLocationMarker);
+    if (youAreHereLabel) map.removeLayer(youAreHereLabel);
+    userLocationMarker = null;
+    youAreHereLabel = null;
     map.setView(CONFIG.map.initialView, CONFIG.map.initialZoom);
     nearestResults.innerHTML = '';
     nearestResults.classList.add('empty');
@@ -1121,10 +1146,7 @@ function drawTourRoute(tour) {
 
     if (!tour || tour.length < 2) return;
 
-    var latlngs = [];
-    for (var i = 0; i < tour.length; i++) {
-        latlngs.push([tour[i].lat, tour[i].lng]);
-    }
+    var latlngs = tour.map(function(m) { return [m.lat, m.lng]; });
     tourPolyline = L.polyline(latlngs, {
         color: '#22c55e',
         weight: 4,
@@ -1147,12 +1169,10 @@ function drawTourRoute(tour) {
         iconAnchor: [25, 11]
     });
 
-    if (tour.length > 0) {
-        var first = tour[0];
-        var last = tour[tour.length - 1];
-        L.marker([first.lat, first.lng], { icon: startIcon, interactive: false }).addTo(map);
-        L.marker([last.lat, last.lng], { icon: endIcon, interactive: false }).addTo(map);
-    }
+    var first = tour[0];
+    var last = tour[tour.length - 1];
+    L.marker([first.lat, first.lng], { icon: startIcon, interactive: false }).addTo(map);
+    L.marker([last.lat, last.lng], { icon: endIcon, interactive: false }).addTo(map);
 
     var bounds = L.latLngBounds(latlngs);
     map.fitBounds(bounds, { padding: [60, 60] });
@@ -1213,10 +1233,7 @@ function showTourRoute() {
         map.removeControl(routingControl);
         routingControl = null;
     }
-    var waypoints = [];
-    for (var i = 0; i < currentTour.length; i++) {
-        waypoints.push(L.latLng(currentTour[i].lat, currentTour[i].lng));
-    }
+    var waypoints = currentTour.map(function(m) { return L.latLng(m.lat, m.lng); });
     routingControl = L.Routing.control({
         waypoints: waypoints,
         routeWhileDragging: false,

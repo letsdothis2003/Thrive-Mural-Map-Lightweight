@@ -1,20 +1,16 @@
 // Generated at build time by GitHub Actions — DO NOT commit production secrets to Git.
 const CONFIG = {
-  // Injected via GitHub Secret: CSV_URL
-  csvUrl: '${{ secrets.CSV_URL }}',
+  csvUrl: './ThriveFullScrape_2026.csv',
 
   geocoding: {
     primary: {
-      endpoint: 'https://nominatim.openstreetmap.org/search',
-      apiKey: '', // Nominatim is free; no API key required
-      delayBetweenRequests: 200
+      endpoint: null,
+      apiKey: '',
+      delayBetweenRequests: 1000
     },
     fallback: {
-      endpoint: 'https://api.openrouteservice.org/geocode/search',
-      // Injected via GitHub Secret: ORS_API_KEY
-      apiKey: '${{ secrets.ORS_API_KEY }}',
-      proxy: 'https://corsproxy.io/?',
-      delayBetweenRequests: 200
+      endpoint: 'https://nominatim.openstreetmap.org/search',
+      delayBetweenRequests: 1000
     },
     directParse: { enabled: true }
   },
@@ -23,12 +19,13 @@ const CONFIG = {
     initialView: [40.7128, -74.0060], // NYC center
     initialZoom: 11,
     maxZoom: 19,
-    tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    tileLayer: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
     tileAttribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   },
 
   columns: {
     name: 'mural_title',
+    siteName: 'site_name',
     artist: 'artist_names',
     description: 'tour_description',
     year: 'year',

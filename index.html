@@ -56,6 +56,13 @@
       border-bottom: 1px solid var(--panel-border);
       transition: background 0.15s;
     }
+    .search-results-dropdown.visible .search-result-item {
+      animation: suggestion-enter 160ms ease-out both;
+    }
+    .search-results-dropdown.visible .search-result-item:nth-child(2) { animation-delay: 20ms; }
+    .search-results-dropdown.visible .search-result-item:nth-child(3) { animation-delay: 35ms; }
+    .search-results-dropdown.visible .search-result-item:nth-child(4) { animation-delay: 50ms; }
+    .search-results-dropdown.visible .search-result-item:nth-child(n + 5) { animation-delay: 65ms; }
     .search-result-item:hover { background: rgba(59,130,246,0.15); }
     .search-result-item .result-sub {
       font-size: 11px;
@@ -64,10 +71,31 @@
     }
     .search-wrapper {
       display: flex;
-      gap: 6px;
-      align-items: center;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
     }
-    .search-wrapper input { flex: 1; }
+    .search-input-row {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+    }
+    .search-input-row input {
+      flex: 1;
+      min-width: 0;
+    }
+    .search-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .search-filter-grid .filter-group { gap: 5px; }
+    .search-filter-grid .filter-group label {
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+    .surprise-btn { align-self: flex-end; }
     .clear-search-btn {
       background: var(--card-bg);
       border: 1px solid var(--panel-border);
@@ -83,6 +111,10 @@
       background: var(--input-focus-bg);
       color: var(--text-main);
       border-color: var(--brand-blue);
+    }
+    .clear-search-btn:active,
+    .surprise-btn:active {
+      transform: scale(0.96);
     }
     .surprise-btn {
       background: var(--brand-pink);
@@ -182,35 +214,37 @@
         </label>
       </div>
 
-      <!-- Search with dropdown & Surprise Me -->
+      <!-- Search and filters -->
       <div class="filter-group" style="margin-top:20px;">
         <label for="searchInput">Search Murals</label>
         <div class="search-wrapper">
-          <input type="text" id="searchInput" placeholder="Type mural title, artist, or description..." aria-label="Search murals" />
-          <button id="clearSearchBtn" class="clear-search-btn" title="Clear search">✕</button>
+          <div class="search-input-row">
+            <input type="text" id="searchInput" placeholder="Title, artist, school, address, or description..." aria-label="Search murals" />
+            <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" aria-label="Clear search">✕</button>
+          </div>
           <button id="surpriseMeBtn" class="surprise-btn" title="Go to a random mural">🎲 Surprise Me</button>
         </div>
         <div id="searchResults" class="search-results-dropdown"></div>
-      </div>
-
-      <!-- Advanced Search Filters Toggle -->
-      <div style="border-top:1px solid var(--panel-border); margin-top:10px; padding-top:5px;">
-        <button id="toggleSearchFiltersBtn" class="view-all-btn" style="width:100%; text-align:left; padding:10px 0; display:flex; justify-content:space-between; align-items:center; font-weight:600; color:var(--heading-color); text-transform:uppercase; font-size:13px; letter-spacing:0.5px;">
-          <span>Advanced Search Filters</span>
-          <span id="toggleSearchFiltersIcon">+</span>
-        </button>
-        <div id="searchFiltersContainer" style="display:none; flex-direction:column; gap:20px;">
+        <div class="search-filter-grid" aria-label="Filter murals">
+          <div class="filter-group">
+            <label for="boroughFilter">Borough</label>
+            <select id="boroughFilter" class="filter-select"><option value="">All Boroughs</option></select>
+          </div>
+          <div class="filter-group">
+            <label for="siteFilter">School / Site</label>
+            <select id="siteFilter" class="filter-select"><option value="">All Sites</option></select>
+          </div>
           <div class="filter-group">
             <label for="yearFilter">Year</label>
             <select id="yearFilter" class="filter-select"><option value="">All Years</option></select>
           </div>
           <div class="filter-group">
-            <label for="schoolsFilter">Schools / Sites</label>
-            <select id="schoolsFilter" class="filter-select"><option value="">All Schools / Sites</option></select>
-          </div>
-          <div class="filter-group">
-            <label for="boroughFilter">Locations</label>
-            <select id="boroughFilter" class="filter-select"><option value="">All Boroughs</option></select>
+            <label for="settingFilter">Setting</label>
+            <select id="settingFilter" class="filter-select">
+              <option value="">Interior &amp; Exterior</option>
+              <option value="interior">Interior</option>
+              <option value="exterior">Exterior</option>
+            </select>
           </div>
         </div>
       </div>
@@ -293,16 +327,15 @@ To update the data source or API key, edit the values below.
 ============================================================ -->
 <script>
   const CONFIG = {
-    csvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQGG7nJALaHS51jJ7BEcfeu-MqPPoTXUo5hkJd1NE-tTn9W76gduRp5dPDoOEsQMFbd8LYm4Oq8-R9_/pub?output=csv',
+    csvUrl: './ThriveFullScrape_2026.csv',
 
     geocoding: {
       // No backend available in standalone mode — uses ORS + Nominatim directly from browser.
       backendEndpoint: null,
       primary: {
-        endpoint: 'https://api.openrouteservice.org/geocode/search',
-        apiKey: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzMTkzMjU2M2NiYjRkOTc4ODE5ZmU2Y2IzNTg0OTBkIiwiaCI6Im11cm11cjY4In0=',
-        proxy: 'https://corsproxy.io/?',
-        delayBetweenRequests: 200
+        endpoint: null,
+        apiKey: '',
+        delayBetweenRequests: 1000
       },
       fallback: {
         endpoint: 'https://nominatim.openstreetmap.org/search',
@@ -315,12 +348,13 @@ To update the data source or API key, edit the values below.
       initialView: [40.7128, -74.0060],
       initialZoom: 11,
       maxZoom: 19,
-      tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      tileLayer: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
       tileAttribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     },
 
     columns: {
       name: 'mural_title',
+      siteName: 'site_name',
       artist: 'artist_names',
       description: 'tour_description',
       year: 'year',

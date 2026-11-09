@@ -1,7 +1,7 @@
 // ============================================================
 // THRIVE COLLECTIVE - MURAL MAP
-// Three-tier geocoding: ORS + proxy -> Nominatim -> Direct parse
-// Two-pass loading: instant cache + background geocoding
+// Explicit address searches use geocoding; mural markers load from cached coordinates
+// with immediate approximate fallback when no bundled coordinates are available.
 // Full descriptions in popups, no truncation
 // ============================================================
 
@@ -41,11 +41,9 @@ const muralViewLabel = document.getElementById('muralViewLabel');
 const clearAllFiltersBtn = document.getElementById('clearAllFiltersBtn');
 const enableNarrator = document.getElementById('enableNarrator');
 const yearFilter = document.getElementById('yearFilter');
-const schoolsFilter = document.getElementById('schoolsFilter');
+const siteFilter = document.getElementById('siteFilter');
 const boroughFilter = document.getElementById('boroughFilter');
-const toggleSearchFiltersBtn = document.getElementById('toggleSearchFiltersBtn');
-const searchFiltersContainer = document.getElementById('searchFiltersContainer');
-const toggleSearchFiltersIcon = document.getElementById('toggleSearchFiltersIcon');
+const settingFilter = document.getElementById('settingFilter');
 const recentMuralsList = document.getElementById('recentMuralsList');
 const savedMuralsList = document.getElementById('savedMuralsList');
 const featuredMuralsList = document.getElementById('featuredMuralsList');
@@ -69,6 +67,7 @@ const modalTitle = document.getElementById('modalTitle');
 const modalBody = document.getElementById('modalBody');
 const modalClose = document.getElementById('modalClose');
 const toast = document.getElementById('toast');
+let searchDebounceTimer = null;
 
 // --- Helper functions ---
 
@@ -117,12 +116,6 @@ function showToast(message, duration) {
     toast._timeout = setTimeout(function() {
         toast.classList.add('hidden');
     }, duration);
-}
-
-function updateLoadingProgress(current, total, message) {
-    if (!message) message = 'Geocoding';
-    var pct = Math.round((current / total) * 100);
-    loadingEl.textContent = message + ' ' + current + ' / ' + total + ' (' + pct + '%)';
 }
 
 // --- Borough / neighbourhood fallback coordinates ---
@@ -194,17 +187,21 @@ function saveGeocodeCache(cache) {
     } catch (e) { /* ignore */ }
 }
 
+function normalizedAddressKey(address) {
+    return String(address || '').trim().toLowerCase().replace(/\s+/g, '_');
+}
+
 function getCachedCoords(address) {
     if (!address) return null;
     var cache = loadGeocodeCache();
-    var key = CACHE_VERSION + '_' + String(address).trim().toLowerCase().replace(/\s+/g, '_');
+    var key = CACHE_VERSION + '_' + normalizedAddressKey(address);
     return cache[key] || null;
 }
 
 function setCachedCoords(address, lat, lng) {
     if (!address) return;
     var cache = loadGeocodeCache();
-    var key = CACHE_VERSION + '_' + String(address).trim().toLowerCase().replace(/\s+/g, '_');
+    var key = CACHE_VERSION + '_' + normalizedAddressKey(address);
     cache[key] = { lat: lat, lng: lng };
     saveGeocodeCache(cache);
 }
@@ -223,6 +220,16 @@ function parseLatLng(text) {
         }
     }
     return null;
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+    var controller = new AbortController();
+    var timeout = setTimeout(function() { controller.abort(); }, timeoutMs);
+    try {
+        return await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 // --- Option 1 + 2: Geocode with three-tier fallback ---
@@ -249,7 +256,7 @@ async function geocodeAddress(address) {
     if (BACKEND_GEOCODE) {
         try {
             var backendUrl = BACKEND_GEOCODE + '?address=' + encodeURIComponent(cleanAddress);
-            var backendRes = await fetch(backendUrl);
+            var backendRes = await fetchWithTimeout(backendUrl, null, 12000);
             if (backendRes.ok) {
                 var backendData = await backendRes.json();
                 if (backendData && typeof backendData.lat === 'number') {
@@ -271,7 +278,7 @@ async function geocodeAddress(address) {
     if (primaryEndpoint && primaryApiKey) {
         try {
             var url = proxy + primaryEndpoint + '?api_key=' + primaryApiKey + '&text=' + encodeURIComponent(cleanAddress) + '&size=1';
-            var response = await fetch(url);
+            var response = await fetchWithTimeout(url, null, 12000);
             if (response.ok) {
                 var data = await response.json();
                 if (data.features && data.features.length > 0) {
@@ -293,9 +300,9 @@ async function geocodeAddress(address) {
     if (fallbackConfig && fallbackConfig.endpoint) {
         try {
             var fallbackUrl = fallbackConfig.endpoint + '?q=' + encodeURIComponent(cleanAddress) + '&format=json&limit=1';
-            var fallbackResponse = await fetch(fallbackUrl, {
+            var fallbackResponse = await fetchWithTimeout(fallbackUrl, {
                 headers: { 'User-Agent': 'MuralMapApp/1.0' }
-            });
+            }, 12000);
             if (fallbackResponse.ok) {
                 var fallbackData = await fallbackResponse.json();
                 if (fallbackData && fallbackData.length > 0) {
@@ -419,7 +426,7 @@ window.toggleSaveMural = function(title, address) {
     refreshMarkers();
 };
 
-// --- Load CSV with two-pass strategy ---
+// --- Load CSV and bundled coordinates ---
 
 async function loadMurals() {
     loadingEl.classList.remove('hidden');
@@ -427,7 +434,7 @@ async function loadMurals() {
     loadingEl.textContent = 'Loading mural data...';
 
     try {
-        var response = await fetch(CONFIG.csvUrl);
+        var response = await fetchWithTimeout(CONFIG.csvUrl, null, 15000);
         if (!response.ok) {
             throw new Error('HTTP error! status: ' + response.status);
         }
@@ -447,6 +454,19 @@ async function loadMurals() {
         var rows = result.data;
         console.log('Parsed ' + rows.length + ' rows from CSV');
 
+        var bundledCoordinates = {};
+        try {
+            var coordinatesResponse = await fetchWithTimeout('./geocodes.json', null, 8000);
+            if (coordinatesResponse.ok) {
+                var coordinatesData = await coordinatesResponse.json();
+                if (coordinatesData.version === 1 && coordinatesData.coordinates && typeof coordinatesData.coordinates === 'object') {
+                    bundledCoordinates = coordinatesData.coordinates;
+                }
+            }
+        } catch (coordinatesError) {
+            console.warn('Precomputed mural coordinates unavailable; using approximate locations:', coordinatesError.message);
+        }
+
         var validRows = rows.filter(function(row) { return !shouldSkipRow(row); });
         console.log('Found ' + validRows.length + ' valid mural entries');
 
@@ -458,13 +478,13 @@ async function loadMurals() {
         initMap();
 
         allMurals = [];
-        var needsGeocoding = [];
 
-        // ── PASS 1: instant load from direct coords or cache ──
+        // Use the shared coordinate bundle first, then saved local coordinates.
         for (var k = 0; k < validRows.length; k++) {
             var row = validRows[k];
             var title = getValue(row, 'name') || 'Untitled Mural';
             var artist = getValue(row, 'artist') || 'Unknown Artist';
+            var site = getValue(row, 'siteName') || '';
             var year = getValue(row, 'year') || '';
             var borough = getValue(row, 'borough') || '';
             var neighborhood = getValue(row, 'neighborhood') || '';
@@ -476,7 +496,7 @@ async function loadMurals() {
             var locationText = String(address || '').trim();
 
             var mural = {
-                title: title, artist: artist, year: year, borough: borough,
+                title: title, artist: artist, site: site, year: year, borough: borough,
                 neighborhood: neighborhood, description: description,
                 imageUrl: imageUrl, detailUrl: detailUrl,
                 address: address, status: status, locationText: locationText
@@ -492,6 +512,14 @@ async function loadMurals() {
                     continue;
                 }
 
+                var bundledCoords = bundledCoordinates[normalizedAddressKey(locationText)];
+                if (bundledCoords && Number.isFinite(bundledCoords.lat) && Number.isFinite(bundledCoords.lng)) {
+                    mural.lat = bundledCoords.lat;
+                    mural.lng = bundledCoords.lng;
+                    allMurals.push(mural);
+                    continue;
+                }
+
                 var cacheKey = CACHE_VERSION + '_' + locationText.toLowerCase().replace(/\s+/g, '_');
                 var cachedCoords = geocodeCache[cacheKey] || null;
                 if (cachedCoords) {
@@ -501,11 +529,20 @@ async function loadMurals() {
                     continue;
                 }
 
-                needsGeocoding.push({ mural: mural, locationText: locationText });
+            }
+
+            var fallbackCoords = getBoroughFallback(mural.borough, mural.neighborhood);
+            if (fallbackCoords) {
+                mural.lat = fallbackCoords.lat;
+                mural.lng = fallbackCoords.lng;
+                mural.approximate = true;
+                allMurals.push(mural);
+            } else {
+                console.warn('No coordinates available for "' + mural.title + '" (' + mural.address + ')');
             }
         }
 
-        console.log('Pass 1 complete: ' + allMurals.length + ' murals loaded instantly, ' + needsGeocoding.length + ' need geocoding');
+        console.log('Loaded ' + allMurals.length + ' murals from bundled, cached, or approximate coordinates');
 
         populateFilters();
         refreshMarkers();
@@ -514,66 +551,18 @@ async function loadMurals() {
         updateFeatured();
         updateTourSummary();
 
-        if (allMurals.length === 0 && needsGeocoding.length === 0) {
+        if (allMurals.length === 0) {
             errorEl.textContent = 'No murals found. Please check your data source.';
             errorEl.classList.remove('hidden');
             loadingEl.classList.add('hidden');
             return;
         }
 
-        if (needsGeocoding.length === 0) {
-            loadingEl.classList.add('hidden');
-            showToast('Loaded ' + allMurals.length + ' murals!');
-            return;
-        }
-
-        loadingEl.textContent = allMurals.length + ' murals loaded — geocoding ' + needsGeocoding.length + ' more…';
-        showToast('Showing ' + allMurals.length + ' murals. ' + needsGeocoding.length + ' more loading…');
-
-        // ── PASS 2: geocode remaining with three-tier fallback ──
-        var delay = (primaryConfig && primaryConfig.delayBetweenRequests) || 300;
-        var geocodedCount = 0;
-        var failedCount = 0;
-
-        for (var i = 0; i < needsGeocoding.length; i++) {
-            var item = needsGeocoding[i];
-            var coords = await geocodeAddress(item.locationText);
-            if (coords) {
-                item.mural.lat = coords.lat;
-                item.mural.lng = coords.lng;
-                item.mural.approximate = false;
-                allMurals.push(item.mural);
-                geocodedCount++;
-            } else {
-                // Borough/neighbourhood fallback — place the mural on the map at an
-                // approximate location rather than dropping it entirely.
-                var approxCoords = getBoroughFallback(item.mural.borough, item.mural.neighborhood);
-                if (approxCoords) {
-                    item.mural.lat = approxCoords.lat;
-                    item.mural.lng = approxCoords.lng;
-                    item.mural.approximate = true;   // flag for visual distinction
-                    allMurals.push(item.mural);
-                    console.warn('Approximate location used for "' + item.mural.title + '" (' + item.mural.address + ')');
-                } else {
-                    failedCount++;
-                }
-            }
-            await new Promise(function(resolve) { setTimeout(resolve, delay); });
-
-            if ((geocodedCount + failedCount) > 0 && (geocodedCount + failedCount) % 10 === 0) {
-                refreshMarkers();
-                updateLoadingProgress(i + 1, needsGeocoding.length, 'Geocoding');
-            }
-        }
-
-        console.log('Pass 2 complete: geocoded ' + geocodedCount + ' of ' + needsGeocoding.length + ' addresses (' + failedCount + ' failed)');
-        console.log('Total murals loaded: ' + allMurals.length);
-
-        populateFilters();
-        refreshMarkers();
-        updateTourSummary();
         loadingEl.classList.add('hidden');
-        showToast('All ' + allMurals.length + ' murals loaded!');
+        var approximateCount = allMurals.filter(function(mural) { return mural.approximate; }).length;
+        showToast(approximateCount
+            ? 'Loaded ' + allMurals.length + ' murals; ' + approximateCount + ' locations are approximate.'
+            : 'Loaded ' + allMurals.length + ' murals!');
 
     } catch (error) {
         console.error('Error loading murals:', error);
@@ -587,21 +576,21 @@ async function loadMurals() {
 
 function populateFilters() {
     var years = [];
-    var schools = [];
+    var sites = [];
     var boroughs = [];
     var yearSet = {};
-    var schoolSet = {};
+    var siteSet = {};
     var boroughSet = {};
 
     for (var i = 0; i < allMurals.length; i++) {
         var m = allMurals[i];
         if (m.year && !yearSet[m.year]) { yearSet[m.year] = true; years.push(m.year); }
-        if (m.neighborhood && !schoolSet[m.neighborhood]) { schoolSet[m.neighborhood] = true; schools.push(m.neighborhood); }
+        if (m.site && !siteSet[m.site]) { siteSet[m.site] = true; sites.push(m.site); }
         if (m.borough && !boroughSet[m.borough]) { boroughSet[m.borough] = true; boroughs.push(m.borough); }
     }
 
     years.sort();
-    schools.sort();
+    sites.sort();
     boroughs.sort();
 
     yearFilter.innerHTML = '<option value="">All Years</option>';
@@ -609,9 +598,9 @@ function populateFilters() {
         yearFilter.innerHTML += '<option value="' + escapeHtml(String(years[y])) + '">' + escapeHtml(String(years[y])) + '</option>';
     }
 
-    schoolsFilter.innerHTML = '<option value="">All Schools / Sites</option>';
-    for (var s = 0; s < schools.length; s++) {
-        schoolsFilter.innerHTML += '<option value="' + escapeHtml(schools[s]) + '">' + escapeHtml(schools[s]) + '</option>';
+    siteFilter.innerHTML = '<option value="">All Sites</option>';
+    for (var s = 0; s < sites.length; s++) {
+        siteFilter.innerHTML += '<option value="' + escapeHtml(sites[s]) + '">' + escapeHtml(sites[s]) + '</option>';
     }
 
     boroughFilter.innerHTML = '<option value="">All Boroughs</option>';
@@ -699,24 +688,8 @@ function refreshMarkers() {
 
     markerClusterGroup.clearLayers();
 
-    var searchTerm = searchInput.value.toLowerCase().trim();
-    var year = yearFilter.value;
-    var school = schoolsFilter.value;
-    var borough = boroughFilter.value;
+    var filtered = getFilteredMurals();
     var viewPercent = parseInt(muralViewSlider.value) / 100;
-
-    var filtered = allMurals.filter(function(mural) {
-        if (searchTerm) {
-            var titleMatch = mural.title.toLowerCase().includes(searchTerm);
-            var artistMatch = mural.artist.toLowerCase().includes(searchTerm);
-            var descMatch = (mural.description || '').toLowerCase().includes(searchTerm);
-            if (!titleMatch && !artistMatch && !descMatch) return false;
-        }
-        if (year && String(mural.year) !== String(year)) return false;
-        if (school && mural.neighborhood !== school) return false;
-        if (borough && mural.borough !== borough) return false;
-        return true;
-    });
 
     if (viewPercent < 1) {
         var shuffled = filtered.slice().sort(function() { return Math.random() - 0.5; });
@@ -741,6 +714,28 @@ function refreshMarkers() {
     if (currentLocation) {
         updateNearestResults(currentLocation.lat, currentLocation.lng);
     }
+}
+
+function getFilteredMurals() {
+    var searchTerm = searchInput.value.toLowerCase().trim();
+    var year = yearFilter.value;
+    var site = siteFilter.value;
+    var borough = boroughFilter.value;
+    var setting = settingFilter.value;
+
+    return allMurals.filter(function(mural) {
+        if (searchTerm) {
+            var searchableText = [mural.title, mural.artist, mural.site, mural.address,
+                mural.neighborhood, mural.borough, mural.description]
+                .filter(Boolean).join(' ').toLowerCase();
+            if (!searchableText.includes(searchTerm)) return false;
+        }
+        if (year && String(mural.year) !== String(year)) return false;
+        if (site && mural.site !== site) return false;
+        if (borough && mural.borough !== borough) return false;
+        if (setting && String(mural.status || '').toLowerCase() !== setting) return false;
+        return true;
+    });
 }
 
 // --- Nearest results ---
@@ -906,30 +901,27 @@ function setupEventListeners() {
     muralViewSlider.style.setProperty('--val', muralViewSlider.value);
 
     clearAllFiltersBtn.addEventListener('click', function() {
+        clearTimeout(searchDebounceTimer);
         searchInput.value = '';
         yearFilter.value = '';
-        schoolsFilter.value = '';
+        siteFilter.value = '';
         boroughFilter.value = '';
+        settingFilter.value = '';
         muralViewSlider.value = 100;
         muralViewLabel.textContent = '100%';
         muralViewSlider.style.setProperty('--val', 100);
         refreshMarkers();
-        if (searchResults) searchResults.classList.remove('visible');
+        renderSearchResults();
         showToast('All filters cleared');
     });
 
-    // Search autocomplete
-    searchInput.addEventListener('input', function() {
-        var query = this.value.trim().toLowerCase();
+    function renderSearchResults() {
+        var query = searchInput.value.trim();
         if (query.length === 0) {
             if (searchResults) searchResults.classList.remove('visible');
-            refreshMarkers();
             return;
         }
-        var matches = allMurals.filter(function(m) {
-            return (m.title && m.title.toLowerCase().includes(query)) ||
-                   (m.artist && m.artist.toLowerCase().includes(query));
-        });
+        var matches = getFilteredMurals().slice(0, 8);
         if (matches.length === 0) {
             if (searchResults) {
                 searchResults.innerHTML = '<div class="search-result-item">No matches found</div>';
@@ -937,19 +929,25 @@ function setupEventListeners() {
             }
             return;
         }
-        var top = matches.slice(0, 10);
         var html = '';
-        top.forEach(function(m) {
+        matches.forEach(function(m) {
             html += '<div class="search-result-item" data-lat="' + m.lat + '" data-lng="' + m.lng + '" data-title="' + escapeHtml(m.title) + '">' +
                 escapeHtml(m.title) +
-                '<span class="result-sub">' + escapeHtml(m.artist) + (m.borough ? ' · ' + escapeHtml(m.borough) : '') + '</span>' +
+                '<span class="result-sub">' + escapeHtml(m.site || m.artist) + (m.borough ? ' · ' + escapeHtml(m.borough) : '') + '</span>' +
                 '</div>';
         });
         if (searchResults) {
             searchResults.innerHTML = html;
             searchResults.classList.add('visible');
         }
-        refreshMarkers();
+    }
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(function() {
+            renderSearchResults();
+            refreshMarkers();
+        }, 160);
     });
 
     if (searchResults) {
@@ -963,12 +961,14 @@ function setupEventListeners() {
                 window.zoomToMural(title, lat, lng);
                 searchResults.classList.remove('visible');
                 searchInput.value = title;
+                refreshMarkers();
             }
         });
     }
 
     if (clearSearchBtn) {
         clearSearchBtn.addEventListener('click', function() {
+            clearTimeout(searchDebounceTimer);
             searchInput.value = '';
             if (searchResults) searchResults.classList.remove('visible');
             refreshMarkers();
@@ -987,14 +987,11 @@ function setupEventListeners() {
         });
     }
 
-    yearFilter.addEventListener('change', refreshMarkers);
-    schoolsFilter.addEventListener('change', refreshMarkers);
-    boroughFilter.addEventListener('change', refreshMarkers);
-
-    toggleSearchFiltersBtn.addEventListener('click', function() {
-        var isVisible = searchFiltersContainer.style.display !== 'none';
-        searchFiltersContainer.style.display = isVisible ? 'none' : 'flex';
-        toggleSearchFiltersIcon.textContent = isVisible ? '+' : '\u2212';
+    [yearFilter, siteFilter, boroughFilter, settingFilter].forEach(function(filter) {
+        filter.addEventListener('change', function() {
+            renderSearchResults();
+            refreshMarkers();
+        });
     });
 
     refreshFeaturedBtn.addEventListener('click', updateFeatured);
@@ -1314,6 +1311,9 @@ function showTourRoute() {
     }
     var waypoints = currentTour.map(function(m) { return L.latLng(m.lat, m.lng); });
     routingControl = L.Routing.control({
+        router: L.Routing.osrmv1({
+            serviceUrl: 'https://router.project-osrm.org/route/v1'
+        }),
         waypoints: waypoints,
         routeWhileDragging: false,
         showAlternatives: false,

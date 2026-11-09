@@ -1,5 +1,5 @@
 const CONFIG = {
-  csvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQGG7nJALaHS51jJ7BEcfeu-MqPPoTXUo5hkJd1NE-tTn9W76gduRp5dPDoOEsQMFbd8LYm4Oq8-R9_/pub?output=csv',
+  csvUrl: './ThriveFullScrape_2026.csv',
   geocoding: {
     primary: {
       endpoint: 'https://nominatim.openstreetmap.org/search',
@@ -7,10 +7,8 @@ const CONFIG = {
       delayBetweenRequests: 200
     },
     fallback: {
-      endpoint: 'https://api.openrouteservice.org/geocode/search',
-      apiKey: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzMTkzMjU2M2NiYjRkOTc4ODE5ZmU2Y2IzNTg0OTBkIiwiaCI6Im11cm11cjY0In0=',
-      proxy: 'https://corsproxy.io/?',
-      delayBetweenRequests: 200
+      endpoint: 'https://nominatim.openstreetmap.org/search',
+      delayBetweenRequests: 1000
     },
     directParse: { enabled: true }
   },
@@ -18,11 +16,12 @@ const CONFIG = {
     initialView: [40.7128, -74.0060],
     initialZoom: 11,
     maxZoom: 19,
-    tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    tileLayer: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
     tileAttribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   },
   columns: {
     name: 'mural_title',
+    siteName: 'site_name',
     artist: 'artist_names',
     description: 'tour_description',
     year: 'year',

@@ -361,12 +361,24 @@ function createApproxIcon() {
 // --- Build popup content (FULL DESCRIPTION, no truncation) ---
 
 function buildPopupContent(mural) {
-    var content = '<div style="max-width: ' + CONFIG.popup.maxWidth + 'px; max-height: ' + CONFIG.popup.maxHeight + 'px; overflow-y: auto; padding-right: 4px;">' +
+    var content = '<div class="mural-popup-content" style="max-width: ' + CONFIG.popup.maxWidth + 'px;">' +
         '<h3 style="margin: 0 0 4px 0; font-size: 16px; color: var(--heading-color, #1a1a1a);">' + escapeHtml(mural.title) + '</h3>' +
-        '<p style="margin: 2px 0; font-weight: bold; font-size: 14px; color: #2E7D32;">' + escapeHtml(mural.artist) + '</p>';
+        '<p style="margin: 2px 0; font-weight: bold; font-size: 14px; color: var(--popup-accent, #166534);">' + escapeHtml(mural.artist) + '</p>';
+
+    if (mural.site) {
+        content += '<p style="margin: 2px 0; font-size: 12px; color: var(--text-main, #222);">Site: ' + escapeHtml(mural.site) + '</p>';
+    }
 
     if (mural.year) {
         content += '<p style="margin: 2px 0; font-size: 12px; color: var(--text-muted, #666);">Year: ' + escapeHtml(mural.year) + '</p>';
+    }
+
+    if (mural.status) {
+        content += '<p style="margin: 2px 0; font-size: 12px; color: var(--text-main, #222);">Setting: ' + escapeHtml(mural.status) + '</p>';
+    }
+
+    if (mural.studentsInvolved) {
+        content += '<p style="margin: 2px 0; font-size: 12px; color: var(--text-main, #222);">Students: ' + escapeHtml(mural.studentsInvolved) + '</p>';
     }
 
     if (mural.borough || mural.neighborhood) {
@@ -384,7 +396,7 @@ function buildPopupContent(mural) {
     }
 
     if (mural.imageUrl && String(mural.imageUrl).length > 10) {
-        content += '<br><img src="' + escapeHtml(mural.imageUrl) + '" style="max-width: 100%; max-height: 180px; border-radius: 4px; object-fit: cover;" onerror="this.style.display=\'none\'">';
+        content += '<br><img src="' + escapeHtml(mural.imageUrl) + '" alt="Mural artwork: ' + escapeHtml(mural.title) + '" onerror="this.style.display=\'none\'">';
     }
 
     // FULL DESCRIPTION – no truncation
@@ -394,7 +406,7 @@ function buildPopupContent(mural) {
     }
 
     if (mural.detailUrl) {
-        content += '<p style="margin: 6px 0 0 0;"><a href="' + escapeHtml(mural.detailUrl) + '" target="_blank" style="color: #4CAF50; font-weight: bold; font-size: 13px; text-decoration: none; border: 1px solid #4CAF50; padding: 4px 12px; border-radius: 4px; display: inline-block;">Learn More</a></p>';
+        content += '<p style="margin: 6px 0 0 0;"><a href="' + escapeHtml(mural.detailUrl) + '" target="_blank" rel="noopener noreferrer" style="color: var(--brand-green, #15803d); font-weight: bold; font-size: 13px; text-decoration: underline; text-underline-offset: 2px; padding: 5px 2px; display: inline-block;">Learn More</a></p>';
     }
 
     var isSaved = savedMurals.some(function(m) { return m.title === mural.title && m.address === mural.address; });
@@ -485,6 +497,7 @@ async function loadMurals() {
             var title = getValue(row, 'name') || 'Untitled Mural';
             var artist = getValue(row, 'artist') || 'Unknown Artist';
             var site = getValue(row, 'siteName') || '';
+            var studentsInvolved = getValue(row, 'studentsInvolved') || '';
             var year = getValue(row, 'year') || '';
             var borough = getValue(row, 'borough') || '';
             var neighborhood = getValue(row, 'neighborhood') || '';
@@ -496,7 +509,8 @@ async function loadMurals() {
             var locationText = String(address || '').trim();
 
             var mural = {
-                title: title, artist: artist, site: site, year: year, borough: borough,
+                title: title, artist: artist, site: site, studentsInvolved: studentsInvolved,
+                year: year, borough: borough,
                 neighborhood: neighborhood, description: description,
                 imageUrl: imageUrl, detailUrl: detailUrl,
                 address: address, status: status, locationText: locationText

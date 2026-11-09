@@ -28,6 +28,7 @@
   --select-hover-bg: rgba(15, 23, 42, 0.8);
   --select-focus-bg: rgba(15, 23, 42, 0.85);
   --logo-bg: #000000;
+  --popup-accent: #6ee7b7;
 
   /* Brand colors */
   --brand-blue: #3b82f6;
@@ -55,6 +56,7 @@ html.light-mode {
   --select-hover-bg: rgba(240, 240, 240, 0.8);
   --select-focus-bg: rgba(248, 250, 252, 0.85);
   --logo-bg: #94a3b8;
+  --popup-accent: #166534;
 }
 
 html.light-mode .nearest-card p,
@@ -1076,18 +1078,55 @@ input:focus-visible {
 
 /* ── Leaflet Overrides ── */
 .leaflet-popup-content-wrapper {
-  border-radius: 8px !important;
-  background: var(--panel-bg) !important;
-  border: 1px solid var(--panel-border) !important;
-  box-shadow: var(--panel-shadow) !important;
-  backdrop-filter: blur(24px) !important;
+  border-radius: 10px !important;
+  background: rgba(15, 23, 42, 0.84) !important;
+  border: 1px solid rgba(255, 255, 255, 0.26) !important;
+  box-shadow: 0 18px 48px rgba(2, 6, 23, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  backdrop-filter: blur(18px) saturate(145%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(145%) !important;
 }
 .leaflet-popup-content {
   color: var(--text-main) !important;
   line-height: 1.5;
 }
 .leaflet-popup-tip {
-  background: var(--panel-bg) !important;
+  background: rgba(15, 23, 42, 0.92) !important;
+  box-shadow: 1px 1px 8px rgba(2, 6, 23, 0.18) !important;
+}
+
+html.light-mode .leaflet-popup-content-wrapper {
+  background: rgba(255, 255, 255, 0.93) !important;
+  border-color: rgba(15, 23, 42, 0.2) !important;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+html.light-mode .leaflet-popup-tip {
+  background: rgba(255, 255, 255, 0.96) !important;
+}
+
+.mural-popup-content {
+  max-height: min(65vh, 500px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px 8px 2px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+}
+.mural-popup-content img {
+  display: block;
+  max-width: 100%;
+  max-height: min(32vh, 220px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.mural-popup-content p,
+.mural-popup-content h3 {
+  overflow-wrap: anywhere;
+}
+.mural-popup-content .mural-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .leaflet-control-zoom a {

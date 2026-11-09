@@ -23,6 +23,7 @@ const CONFIG = {
     name: 'mural_title',
     siteName: 'site_name',
     artist: 'artist_names',
+    studentsInvolved: 'students_involved',
     description: 'tour_description',
     year: 'year',
     borough: 'borough',

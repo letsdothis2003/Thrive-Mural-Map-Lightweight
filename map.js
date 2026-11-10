@@ -392,7 +392,7 @@ function buildPopupContent(mural) {
 
     if (mural.approximate) {
         content += '<p style="margin: 4px 0; font-size: 11px; color: #b45309; background: #fef3c7; border-radius: 4px; padding: 3px 6px;">' +
-            '📍 Approximate location — address could not be pinpointed</p>';
+            'Approximate location — address could not be pinpointed</p>';
     }
 
     if (mural.imageUrl && String(mural.imageUrl).length > 10) {
@@ -656,6 +656,10 @@ function initMap() {
 
     map.addLayer(markerClusterGroup);
 
+    // On phones, tucking the sheet away keeps the opened popup visible
+    map.on('popupopen', collapseMobileSheet);
+    map.on('click', collapseMobileSheet);
+
     // Popup listener for narrator
     map.on('popupopen', function(e) {
         if (!narratorEnabled) return;
@@ -720,7 +724,7 @@ function refreshMarkers() {
             var popupContent = buildPopupContent(mural);
             var icon = mural.approximate ? approxIcon : greenIcon;
             var marker = L.marker([mural.lat, mural.lng], { icon: icon })
-                .bindPopup(popupContent, { maxWidth: CONFIG.popup.maxWidth });
+                .bindPopup(popupContent, { maxWidth: popupMaxWidth() });
             markerClusterGroup.addLayer(marker);
         }
     }
@@ -804,6 +808,7 @@ function getDistance(lat1, lng1, lat2, lng2) {
 }
 
 window.zoomToMural = function(title, lat, lng) {
+    collapseMobileSheet();
     map.setView([lat, lng], 16);
     var mural = allMurals.find(function(m) { return m.title === title && m.lat === lat && m.lng === lng; });
     if (mural) addToRecent(mural);
@@ -883,6 +888,67 @@ function toggleTheme() {
     applyTheme();
 }
 
+// --- Mobile bottom sheet ---
+
+var mobileQuery = window.matchMedia('(max-width: 768px)');
+
+function isMobileView() {
+    return mobileQuery.matches;
+}
+
+function setMobileSheet(expanded) {
+    sidebar.classList.toggle('mobile-expanded', expanded);
+    var handle = document.getElementById('mobileSheetHandle');
+    if (handle) handle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    if (!expanded) sidebar.scrollTop = 0;
+}
+
+function collapseMobileSheet() {
+    if (isMobileView()) setMobileSheet(false);
+}
+
+function popupMaxWidth() {
+    return Math.min(CONFIG.popup.maxWidth, window.innerWidth - 56);
+}
+
+function setupMobileSheet() {
+    var handle = document.getElementById('mobileSheetHandle');
+    var logo = sidebar.querySelector('.sidebar-header .logo');
+    if (!handle) return;
+    handle.setAttribute('aria-expanded', 'false');
+
+    function toggle() {
+        if (isMobileView()) setMobileSheet(!sidebar.classList.contains('mobile-expanded'));
+    }
+    handle.addEventListener('click', toggle);
+    handle.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    if (logo) logo.addEventListener('click', toggle);
+
+    // Swipe up / down on the handle or header to open / close
+    var startY = null;
+    var swipeZones = [handle, sidebar.querySelector('.sidebar-header')];
+    swipeZones.forEach(function(zone) {
+        if (!zone) return;
+        zone.addEventListener('touchstart', function(e) {
+            startY = e.touches[0].clientY;
+        }, { passive: true });
+        zone.addEventListener('touchend', function(e) {
+            if (startY === null || !isMobileView()) return;
+            var dy = e.changedTouches[0].clientY - startY;
+            startY = null;
+            if (dy < -30) setMobileSheet(true);
+            else if (dy > 30) setMobileSheet(false);
+        });
+    });
+
+    // Leaving mobile layout clears the sheet state
+    var onChange = function() { if (!isMobileView()) setMobileSheet(false); };
+    if (mobileQuery.addEventListener) mobileQuery.addEventListener('change', onChange);
+    else if (mobileQuery.addListener) mobileQuery.addListener(onChange);
+}
+
 // --- Event listeners ---
 
 function setupEventListeners() {
@@ -898,6 +964,8 @@ function setupEventListeners() {
         sidebarShowTab.classList.add('hidden');
     });
 
+    setupMobileSheet();
+
     startSearchBtn.addEventListener('click', handleAddressSearch);
     manualAddressInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') handleAddressSearch();
@@ -909,10 +977,10 @@ function setupEventListeners() {
     muralViewSlider.addEventListener('input', function() {
         var val = this.value;
         muralViewLabel.textContent = val + '%';
-        this.style.setProperty('--val', val);
+        this.style.setProperty('--val', (val - 10) / 90 * 100);
         refreshMarkers();
     });
-    muralViewSlider.style.setProperty('--val', muralViewSlider.value);
+    muralViewSlider.style.setProperty('--val', (muralViewSlider.value - 10) / 90 * 100);
 
     clearAllFiltersBtn.addEventListener('click', function() {
         clearTimeout(searchDebounceTimer);
@@ -1023,10 +1091,10 @@ function setupEventListeners() {
     customTourRadius.addEventListener('input', function() {
         var val = this.value;
         customTourRadiusLabel.textContent = val + ' mile' + (val > 1 ? 's' : '');
-        this.style.setProperty('--val', (val / 5) * 100);
+        this.style.setProperty('--val', ((val - 0.5) / 4.5) * 100);
         updateTourSummary();
     });
-    customTourRadius.style.setProperty('--val', (customTourRadius.value / 5) * 100);
+    customTourRadius.style.setProperty('--val', ((customTourRadius.value - 0.5) / 4.5) * 100);
 
     customTourLimit.addEventListener('input', function() {
         var val = this.value;
@@ -1304,12 +1372,13 @@ function navigateTourTo(index) {
         stops[i].classList.toggle('active', i === index);
     }
     var mural = currentTour[index];
+    collapseMobileSheet();
     map.setView([mural.lat, mural.lng], 16);
     var greenIcon = createGreenIcon();
     var popupContent = buildPopupContent(mural);
     var marker = L.marker([mural.lat, mural.lng], { icon: greenIcon })
         .addTo(map)
-        .bindPopup(popupContent, { maxWidth: CONFIG.popup.maxWidth })
+        .bindPopup(popupContent, { maxWidth: popupMaxWidth() })
         .openPopup();
     setTimeout(function() { map.removeLayer(marker); }, 5000);
 }

@@ -10,7 +10,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Interactive map of Thrive Collective murals across New York City." />
   <meta name="theme-color" content="#0f172a" />
   <title>Thrive Collective – Mural Map</title>
@@ -138,7 +138,7 @@
   <!-- SIDEBAR -->
   <aside id="sidebar" role="complementary" aria-label="Controls and filters">
 
-    <div class="mobile-sheet-handle" id="mobileSheetHandle" role="button" aria-label="Toggle panel" tabindex="0"></div>
+    <div class="mobile-sheet-handle" id="mobileSheetHandle" role="button" aria-label="Toggle panel" aria-controls="sidebar" tabindex="0"></div>
 
     <button id="sidebarHideBtn" class="sidebar-hide-btn" aria-label="Hide sidebar" title="Hide sidebar">
       <span aria-hidden="true">&#8249;</span>
@@ -220,9 +220,9 @@
         <div class="search-wrapper">
           <div class="search-input-row">
             <input type="text" id="searchInput" placeholder="Title, artist, school, address, or description..." aria-label="Search murals" />
-            <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" aria-label="Clear search">✕</button>
+            <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" aria-label="Clear search">Clear</button>
           </div>
-          <button id="surpriseMeBtn" class="surprise-btn" title="Go to a random mural">🎲 Surprise Me</button>
+          <button id="surpriseMeBtn" class="surprise-btn" title="Go to a random mural">Surprise Me</button>
         </div>
         <div id="searchResults" class="search-results-dropdown"></div>
         <div class="search-filter-grid" aria-label="Filter murals">
@@ -273,8 +273,8 @@
 
     <!-- Footer -->
     <footer style="border-top:1px solid var(--panel-border); padding-top:12px; margin-top:8px; font-size:10px; color:var(--text-muted); text-align:center;">
-      Data &copy; Thrive Collective &bull; Map &copy; OpenStreetMap contributors
-      <br /><span style="font-size:9px; opacity:0.6;">Built with Leaflet &amp; ❤️</span>
+      Map &copy; OpenStreetMap contributors
+      <br /><span style="font-size:9px; opacity:0.6;">Built with Leaflet</span>
     </footer>
   </aside>
 

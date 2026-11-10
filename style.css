@@ -607,75 +607,127 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
-/* ── Mural View Slider ── */
-.mural-view-slider {
-  width: 100%;
-  height: 4px;
-  border-radius: 999px;
-  appearance: none;
-  -webkit-appearance: none;
-  outline: none;
-  cursor: pointer;
-}
-.mural-view-slider::-webkit-slider-thumb {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.mural-view-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  box-shadow: 0 2px 14px rgba(59, 130, 246, 0.6);
-}
-.mural-view-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: none;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-  cursor: pointer;
-}
-
-/* ── Custom Tour Sliders ── */
+/* ── Range Sliders ── */
+.mural-view-slider,
 #customTourRadius,
 #customTourLimit {
+  --val: 50;
+  --fill-start: var(--brand-blue);
+  --fill-end: var(--brand-green);
+  --track-empty: rgba(148, 163, 184, 0.22);
+  --thumb-ring: var(--brand-blue);
   width: 100%;
   height: 6px;
+  margin: 12px 0;
   border-radius: 999px;
   appearance: none;
   -webkit-appearance: none;
   outline: none;
   cursor: pointer;
-  margin: 12px 0;
+  background:
+    linear-gradient(90deg, var(--fill-start), var(--fill-end)) 0 / calc(var(--val) * 1%) 100% no-repeat,
+    var(--track-empty);
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
 }
+#customTourRadius {
+  --fill-start: var(--brand-pink);
+  --fill-end: #a855f7;
+  --thumb-ring: var(--brand-pink);
+}
+#customTourLimit {
+  --fill-start: var(--brand-blue);
+  --fill-end: #06b6d4;
+  --thumb-ring: var(--brand-blue);
+}
+.mural-view-slider:hover,
+#customTourRadius:hover,
+#customTourLimit:hover {
+  filter: saturate(1.15);
+}
+.mural-view-slider:focus-visible,
+#customTourRadius:focus-visible,
+#customTourLimit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--thumb-ring) 25%, transparent);
+}
+
+/* Thumb – WebKit */
+.mural-view-slider::-webkit-slider-thumb,
 #customTourRadius::-webkit-slider-thumb,
 #customTourLimit::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #ffffff;
-  cursor: pointer;
-  transition: transform 0.15s ease;
+  border: 3px solid var(--thumb-ring);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+  cursor: grab;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
 }
-#customTourRadius::-webkit-slider-thumb {
-  border: 2px solid var(--brand-pink);
-  box-shadow: 0 2px 6px rgba(244, 114, 182, 0.4);
-}
-#customTourLimit::-webkit-slider-thumb {
-  border: 2px solid var(--brand-blue);
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
-}
+.mural-view-slider::-webkit-slider-thumb:hover,
 #customTourRadius::-webkit-slider-thumb:hover,
 #customTourLimit::-webkit-slider-thumb:hover {
   transform: scale(1.15);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--thumb-ring) 18%, transparent), 0 2px 8px rgba(15, 23, 42, 0.3);
+}
+.mural-view-slider:active::-webkit-slider-thumb,
+#customTourRadius:active::-webkit-slider-thumb,
+#customTourLimit:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.25);
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--thumb-ring) 22%, transparent), 0 2px 10px rgba(15, 23, 42, 0.3);
+}
+
+/* Thumb & track – Firefox */
+.mural-view-slider::-moz-range-track,
+#customTourRadius::-moz-range-track,
+#customTourLimit::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+.mural-view-slider::-moz-range-thumb,
+#customTourRadius::-moz-range-thumb,
+#customTourLimit::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid var(--thumb-ring);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+  cursor: grab;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+}
+.mural-view-slider::-moz-range-thumb:hover,
+#customTourRadius::-moz-range-thumb:hover,
+#customTourLimit::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--thumb-ring) 18%, transparent), 0 2px 8px rgba(15, 23, 42, 0.3);
+}
+
+/* Light mode: deeper, saturated fills on a visible neutral track */
+html.light-mode .mural-view-slider,
+html.light-mode #customTourRadius,
+html.light-mode #customTourLimit {
+  --track-empty: #e2e8f0;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+html.light-mode .mural-view-slider {
+  --fill-start: #2563eb;
+  --fill-end: #059669;
+  --thumb-ring: #2563eb;
+}
+html.light-mode #customTourRadius {
+  --fill-start: #db2777;
+  --fill-end: #7c3aed;
+  --thumb-ring: #db2777;
+}
+html.light-mode #customTourLimit {
+  --fill-start: #2563eb;
+  --fill-end: #0891b2;
+  --thumb-ring: #2563eb;
 }
 
 /* ── Info Tooltip ── */
@@ -1462,5 +1514,135 @@ html.dark-mode .leaflet-control-zoom a {
     top: 12px;
     font-size: 12px;
     max-width: calc(100% - 32px);
+  }
+
+  /* Use the dynamic viewport so browser toolbars don't hide content */
+  #sidebar {
+    max-height: calc(76px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #sidebar.mobile-expanded {
+    max-height: 82vh;
+    max-height: 82dvh;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mobile-sheet-handle {
+    padding: 10px 0 6px;
+    min-height: 24px;
+  }
+  .mobile-sheet-handle::before {
+    margin-bottom: 0;
+  }
+  .sidebar-header .logo {
+    max-width: 118px;
+    padding: 6px;
+    border-width: 2px;
+    cursor: pointer;
+  }
+  .theme-toggle {
+    height: 40px;
+  }
+  #sidebar > section,
+  #sidebar > footer {
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  #sidebar.mobile-expanded > section,
+  #sidebar.mobile-expanded > footer {
+    opacity: 1;
+  }
+
+  /* Comfortable touch targets for sliders and small controls */
+  .mural-view-slider,
+  #customTourRadius,
+  #customTourLimit {
+    height: 8px;
+    margin: 16px 0;
+  }
+  .mural-view-slider::-webkit-slider-thumb,
+  #customTourRadius::-webkit-slider-thumb,
+  #customTourLimit::-webkit-slider-thumb {
+    width: 26px;
+    height: 26px;
+  }
+  .mural-view-slider::-moz-range-thumb,
+  #customTourRadius::-moz-range-thumb,
+  #customTourLimit::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+  }
+  .clear-search-btn,
+  .surprise-btn {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  /* Tooltips stay on screen on narrow devices */
+  .info-tip::after {
+    left: 0;
+    transform: none;
+    width: min(220px, 70vw);
+  }
+
+  /* Popups fit narrow screens */
+  .leaflet-popup-content {
+    margin: 12px 14px !important;
+  }
+  .mural-popup-content {
+    max-width: calc(100vw - 90px) !important;
+  }
+  .mural-popup-content img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Map controls and tour panel clear the collapsed sheet + home indicator */
+  .leaflet-bottom {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+  .leaflet-control-zoom {
+    margin-bottom: 10px !important;
+  }
+  #tourItinerary {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    max-height: 42vh;
+    max-height: 42dvh;
+  }
+  .tour-nav {
+    flex-wrap: wrap;
+  }
+  .tour-nav button {
+    min-height: 44px;
+    flex: 1 1 30%;
+  }
+  #toast {
+    max-width: calc(100vw - 24px);
+    text-align: center;
+    font-size: 13px;
+    padding: 10px 18px;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .search-filter-grid {
+    grid-template-columns: 1fr;
+  }
+  .location-actions {
+    flex-wrap: wrap;
+  }
+  .location-actions .primary-btn {
+    flex-basis: 100%;
+  }
+  .sidebar-header .logo {
+    max-width: 100px;
+  }
+  .theme-toggle {
+    padding: 0 10px;
+    font-size: 12px;
   }
 }
